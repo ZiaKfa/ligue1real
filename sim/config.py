@@ -12,6 +12,7 @@ FPS = 30
 MATCH_SECONDS = 45                 # sim length; trim/loop as you like
 STEPS_PER_FRAME = 4                # physics substeps for stability
 FINAL_SCORE_HOLD_SECONDS = 3       # how long the full-time score screen stays up before closing
+MIN_GOALS_PER_SIDE = 1              # each team must reach this many goals, or the recording is discarded
 
 # ---------------------------------------------------------------
 # COURT

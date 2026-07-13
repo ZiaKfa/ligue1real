@@ -1,5 +1,6 @@
 """Simulate + render a match to a scaled-down preview window, piping
-frames into ffmpeg to produce a finished MP4."""
+frames into ffmpeg to produce a finished MP4 (video pass), then muxing
+in a procedurally-generated sound effects track (audio pass)."""
 
 import os
 import subprocess
@@ -9,20 +10,21 @@ import pygame
 
 from sim.config import (
     VIDEO_W, VIDEO_H, FPS, MATCH_SECONDS, STEPS_PER_FRAME, OUTPUT_DIR,
-    FINAL_SCORE_HOLD_SECONDS,
+    FINAL_SCORE_HOLD_SECONDS, MIN_GOALS_PER_SIDE,
 )
+from . import sfx
 from .draw import draw_frame, draw_final_score
 
 
-def run_preview(match, show_preview=True):
+def run_preview(match, show_preview=True,
+                min_goals_red=MIN_GOALS_PER_SIDE, min_goals_blue=MIN_GOALS_PER_SIDE):
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     timestamp = int(time.time())
     # include the pid - parallel batch runs can start within the same
     # wall-clock second, and a bare timestamp would collide between workers
     run_id = f"{timestamp}_{os.getpid()}"
-    # final filename needs the score, which isn't known until the match ends -
-    # record to a temp name and rename once full time is reached
-    tmp_path = os.path.join(OUTPUT_DIR, f"_recording_{run_id}.mp4")
+    tmp_video_path = os.path.join(OUTPUT_DIR, f"_video_{run_id}.mp4")
+    tmp_audio_path = os.path.join(OUTPUT_DIR, f"_audio_{run_id}.wav")
 
     pygame.init()
     surface = pygame.Surface((VIDEO_W, VIDEO_H))
@@ -37,6 +39,8 @@ def run_preview(match, show_preview=True):
         screen = pygame.display.set_mode((int(VIDEO_W * preview_scale), int(VIDEO_H * preview_scale)))
         pygame.display.set_caption("Futsal Sim - Preview")
 
+    # pass 1: video only - frames are streamed in live, so audio (which
+    # needs the full event log/duration) can't be muxed in this same pass
     ffmpeg_cmd = [
         "ffmpeg", "-y",
         "-f", "rawvideo", "-vcodec", "rawvideo",
@@ -49,7 +53,7 @@ def run_preview(match, show_preview=True):
         "-pix_fmt", "yuv420p",
         "-preset", "fast",
         "-crf", "20",
-        tmp_path,
+        tmp_video_path,
     ]
     proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE)
 
@@ -72,7 +76,7 @@ def run_preview(match, show_preview=True):
         pygame.quit()
         proc.stdin.close()
         proc.wait()
-        os.remove(tmp_path)  # incomplete match - not worth keeping
+        os.remove(tmp_video_path)  # incomplete match - not worth keeping
 
     dt = 1.0 / FPS
 
@@ -104,6 +108,7 @@ def run_preview(match, show_preview=True):
             return
         show_and_pace()
         write_frame()
+        frame_i += 1
 
     pygame.quit()
     proc.stdin.close()
@@ -112,15 +117,44 @@ def run_preview(match, show_preview=True):
     red, blue = match.score["red"], match.score["blue"]
     print(f"\nFull time: {match.team_labels['red']} {red} - {blue} {match.team_labels['blue']}")
 
-    if red + blue == 0:
-        # a scoreless match isn't worth posting - discard the recording
-        os.remove(tmp_path)
-        print("No goals scored - discarding recording.")
+    if red < min_goals_red or blue < min_goals_blue:
+        # each side has its own minimum to reach, or it's not worth posting
+        os.remove(tmp_video_path)
+        print(f"Below min goals (red>={min_goals_red}, blue>={min_goals_blue}) - discarding recording.")
         return None
+
+    # pass 2: build the sound effects track from the event log (video
+    # frame i happened at time_elapsed ~= i / FPS, since time_elapsed
+    # advances every frame regardless of celebration pauses) and mux it
+    # into the video via a second ffmpeg pass (-c:v copy, so the already
+    # -encoded video isn't touched, just re-containered with audio)
+    events = [(0.0, "whistle")]
+    for t, text in match.event_log:
+        name = sfx.event_sound(text)
+        if name is not None:
+            events.append((t, name))
+    events.append((match.time_elapsed, "whistle"))
+
+    duration_seconds = frame_i / FPS
+    samples = sfx.build_audio_track(events, duration_seconds)
+    sfx.write_wav(tmp_audio_path, samples)
 
     # goal count leads the filename (zero-padded) so sorting by name in a
     # file browser surfaces the highest-scoring, most postable matches first
     out_path = os.path.join(OUTPUT_DIR, f"goals{red + blue:02d}_{red}-{blue}_{run_id}.mp4")
-    os.replace(tmp_path, out_path)
+    mux_cmd = [
+        "ffmpeg", "-y",
+        "-i", tmp_video_path,
+        "-i", tmp_audio_path,
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-shortest",
+        out_path,
+    ]
+    subprocess.run(mux_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    os.remove(tmp_video_path)
+    os.remove(tmp_audio_path)
+
     print(f"Saved: {out_path}")
     return out_path

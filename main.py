@@ -11,6 +11,8 @@ Run:
     python main.py --no-preview
     python main.py --no-preview --batch 5             # 4 parallel workers by default
     python main.py --no-preview --batch 20 --jobs 8   # raise it on a beefier machine
+    python main.py --no-preview --batch 10 --min-goals 2
+    python main.py --no-preview --batch 10 --min-goals-red 2 --min-goals-blue 0
 
 Output:
     output/goals<total>_<red>-<blue>_<timestamp>.mp4
@@ -24,13 +26,15 @@ import argparse
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from sim import FutsalMatch
+from sim.config import MIN_GOALS_PER_SIDE
 from render.preview import run_preview
 
 
-def _generate_one(_index):
+def _generate_one(_index, min_goals_red, min_goals_blue):
     """Runs in a worker process - builds and renders one match headlessly."""
     match = FutsalMatch(players_per_team=5)
-    return run_preview(match, show_preview=False)
+    return run_preview(match, show_preview=False,
+                        min_goals_red=min_goals_red, min_goals_blue=min_goals_blue)
 
 
 def main():
@@ -49,13 +53,35 @@ def main():
              "N worker processes (default: 4 - each ffmpeg encode is already "
              "multi-threaded, so going much higher tends to oversubscribe the CPU)",
     )
+    parser.add_argument(
+        "--min-goals", type=int, default=MIN_GOALS_PER_SIDE, metavar="N",
+        help="each team must reach this many goals or the recording is discarded "
+             f"(default: {MIN_GOALS_PER_SIDE}); overridden per-team by "
+             "--min-goals-red/--min-goals-blue below",
+    )
+    parser.add_argument(
+        "--min-goals-red", type=int, default=None, metavar="N",
+        help="override --min-goals for the 'red' team slot specifically "
+             "(note: 'red'/'blue' are just internal team ids, not the actual "
+             "kit color - that's randomized per match)",
+    )
+    parser.add_argument(
+        "--min-goals-blue", type=int, default=None, metavar="N",
+        help="override --min-goals for the 'blue' team slot specifically",
+    )
     args = parser.parse_args()
+
+    min_goals_red = args.min_goals_red if args.min_goals_red is not None else args.min_goals
+    min_goals_blue = args.min_goals_blue if args.min_goals_blue is not None else args.min_goals
 
     if args.no_preview and args.batch > 1:
         # each match is independent and CPU-bound (physics + ffmpeg encode),
         # so parallelizing across processes is a straight wall-clock win
         with ProcessPoolExecutor(max_workers=args.jobs) as pool:
-            futures = [pool.submit(_generate_one, i) for i in range(args.batch)]
+            futures = [
+                pool.submit(_generate_one, i, min_goals_red, min_goals_blue)
+                for i in range(args.batch)
+            ]
             for future in as_completed(futures):
                 future.result()  # re-raise if a worker crashed
         return
@@ -64,7 +90,8 @@ def main():
         if args.batch > 1:
             print(f"\n=== Match {i + 1}/{args.batch} ===")
         match = FutsalMatch(players_per_team=5)
-        run_preview(match, show_preview=not args.no_preview)
+        run_preview(match, show_preview=not args.no_preview,
+                    min_goals_red=min_goals_red, min_goals_blue=min_goals_blue)
 
 
 if __name__ == "__main__":

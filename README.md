@@ -22,12 +22,21 @@ python main.py                          # live preview window while it records
 python main.py --no-preview             # no window, runs faster (good for unattended generation)
 python main.py --no-preview --batch 5   # generates 5 matches in parallel (4 workers by default)
 python main.py --no-preview --batch 5 --jobs 8   # raise/lower the worker count
+python main.py --no-preview --batch 10 --min-goals 2
+python main.py --no-preview --batch 10 --min-goals-red 2 --min-goals-blue 0
 ```
 
 `--batch` with `--no-preview` renders matches across parallel worker processes
 (`--jobs`, default 4) instead of one at a time - each ffmpeg encode is already
 multi-threaded, so going much higher than your core count tends to slow things
 down rather than speed them up.
+
+`--min-goals N` sets how many goals *each* team must score for the match to be
+kept (default: 1 - so scoreless or one-sided 3-0 blowouts get auto-deleted,
+not just posted as-is). `--min-goals-red`/`--min-goals-blue` override that
+per team slot if you want an asymmetric threshold (note: "red"/"blue" are
+just internal team ids here, not the actual kit color - that's randomized
+per match).
 
 This will:
 1. Simulate a 45-second 5v5 futsal match with scripted AI
