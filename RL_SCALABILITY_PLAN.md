@@ -1,32 +1,43 @@
 # Rencana Skalabilitas AI (RL) — Futsal Sim
 
-Dokumen ini adalah hasil review arsitektur `main.py` saat ini terhadap kebutuhan pengembangan AI lanjutan (RL atau metode lain), plus rencana bertahap untuk sampai ke sana. Tidak ada kode yang diubah oleh dokumen ini — ini murni planning.
+Dokumen ini adalah hasil review arsitektur kode saat ini terhadap kebutuhan pengembangan AI lanjutan (RL atau metode lain), plus rencana bertahap untuk sampai ke sana.
+
+---
+
+## 0. Riwayat Versi
+
+| Versi | Konteks | Perubahan |
+|---|---|---|
+| v1.0 | Draft awal (sebelum ada kode dieksekusi dari plan ini) | Review kondisi single-file `main.py` (645 baris), rekomendasi pendekatan (single-agent → shared-policy self-play, PPO/SB3), 6 fase (Fase 0-5), guardrail YAGNI. Semua isi §1-6 di bawah adalah versi awal ini. |
+| v1.1 (saat ini) | Setelah **Fase 0 dieksekusi & diverifikasi** | `main.py` sudah dipecah jadi `sim/` + `render/` + entrypoint tipis sesuai rencana Fase 0. Tabel "hambatan" di §1 dan blok Fase 0 di §3 diperbarui dengan status & lokasi kode terbaru (bukan lagi proposal, tapi hasil nyata + hasil regression test). Detail lengkap ada di §3 → "Fase 0 — Hasil Eksekusi". |
 
 ---
 
 ## 1. Ringkasan Kondisi Saat Ini
 
-**File**: `main.py`, 645 baris, satu class `FutsalMatch` (12 method) + `draw_frame()` + `main()`.
+**File** *(kondisi v1.0, sebelum Fase 0)*: `main.py`, 645 baris, satu class `FutsalMatch` (12 method) + `draw_frame()` + `main()`.
+
+**File** *(kondisi v1.1, setelah Fase 0 — lihat §3 untuk detail)*: dipecah jadi `sim/config.py`, `sim/match.py`, `sim/scripted_ai.py`, `render/draw.py`, `render/preview.py`, dan `main.py` (24 baris, entrypoint tipis).
 
 ### Yang sudah menguntungkan (fondasi kuat, tidak perlu dirombak)
 
 | Aspek | Status | Bukti |
 |---|---|---|
-| Physics loop decoupled dari rendering | ✅ Sudah | `FutsalMatch.step(dt)` ([main.py:309](main.py#L309)) tidak memanggil pygame sama sekali — sudah terbukti bisa dipanggil headless ratusan kali berturut-turut selama development sesi ini. |
-| Seed deterministik | ✅ Sudah | `FutsalMatch(seed=...)` di [main.py:89-91](main.py#L89-L91). |
-| Titik ganti AI sudah diantisipasi | ✅ Sudah | `choose_action(self, player)` ([main.py:205](main.py#L205)) terisolasi per-pemain, docstring-nya secara eksplisit bilang "swap this out for RL policy." |
-| State match self-contained | ✅ Sudah | Semua state ada di instance `FutsalMatch` (`self.score`, `self.possessor`, dll) — tidak ada state global tersembunyi selain `random` module-level. |
+| Physics loop decoupled dari rendering | ✅ Sudah (v1.0) | `FutsalMatch.step(dt)` tidak memanggil pygame sama sekali — sudah terbukti bisa dipanggil headless ratusan kali berturut-turut selama development. |
+| Seed deterministik | ✅ Sudah (v1.0) | `FutsalMatch(seed=...)`. |
+| Titik ganti AI sudah diantisipasi | ✅ Sudah (v1.0), **dieksekusi di v1.1** | Dulu: `choose_action(self, player)` terisolasi per-pemain dengan docstring "swap this out for RL policy." Sekarang: benar-benar sudah dipisah jadi `scripted_policy(match, player)` di [sim/scripted_ai.py](sim/scripted_ai.py), dan `FutsalMatch(policy_fn=...)` di [sim/match.py](sim/match.py) menerima fungsi pengganti — sudah diverifikasi bisa nyuntik action eksternal ke 1 pemain spesifik tanpa ubah `match.py`. |
+| State match self-contained | ✅ Sudah (v1.0) | Semua state ada di instance `FutsalMatch` (`self.score`, `self.possessor`, dll) — tidak ada state global tersembunyi selain `random` module-level. |
 
 ### Yang jadi hambatan
 
-| # | Masalah | Lokasi | Dampak ke RL |
+| # | Masalah | Status v1.1 | Dampak ke RL |
 |---|---|---|---|
-| 1 | Semua concern (physics, AI scripted, render, main loop) ada di satu file | `main.py` seluruhnya | Env RL akan butuh `import` `FutsalMatch` tanpa ikut narik dependency pygame window — bisa tapi kotor kalau tetap 1 file. |
-| 2 | `main()` dipaksa real-time | [main.py:574](main.py#L574) — `clock.tick(FPS)`, window preview selalu dibuat | Training butuh run jauh lebih cepat dari 30fps; belum ada jalur headless-only. |
-| 3 | `choose_action` tidak punya slot action eksternal | [main.py:205](main.py#L205) | Semua pemain (GK/BACK/FWD) selalu jalanin heuristic yang sama; belum ada cara bilang "pemain ini dikontrol model." |
-| 4 | Belum ada observation/reward/Gym interface | — | Ini memang kerjaan baru yang belum pernah dibutuhkan sebelumnya, wajar belum ada. |
-| 5 | `random` module-level global dipakai luas | Banyak tempat (tackle, shot spread, fumble, dll) | Aman untuk 1 proses per env (SubprocVecEnv), tapi jadi masalah kalau nanti threading dalam 1 proses. |
-| 6 | Reward signal alami (skor) sudah ada tapi belum diekspos sebagai reward per-step | `self.score` di [main.py:96](main.py#L96) | Perlu dihitung delta antar step, bukan langsung dipakai. |
+| 1 | Semua concern (physics, AI scripted, render, main loop) ada di satu file | ✅ **Selesai (Fase 0)** — sekarang `sim/` (physics+AI) terpisah total dari `render/` (pygame). `import sim` tidak lagi ikut narik pygame window. | Env RL sekarang bisa `from sim import FutsalMatch` bersih tanpa dependency render. |
+| 2 | `main()` dipaksa real-time, belum ada jalur headless | ⚠️ **Sebagian** — `sim/match.py` sudah 100% headless-callable (sudah dipakai lewat script test langsung tanpa pygame), tapi belum ada entrypoint/flag `--headless` khusus yang jadi convenience wrapper. Item ini sengaja ditunda karena Fase 2 (env wrapper) akan butuh pola importnya sendiri — bikin `run_headless.py` sekarang kemungkinan akan ditulis ulang lagi nanti. | Training tetap bisa mulai (langsung `import sim`), cuma belum ada script siap-pakai untuk smoke-test kecepatan simulasi murni. |
+| 3 | `choose_action` tidak punya slot action eksternal | ✅ **Selesai (Fase 0)** — `FutsalMatch.__init__(..., policy_fn=None)` di [sim/match.py](sim/match.py), default `scripted_policy`. Diverifikasi: policy custom bisa override 1 pemain spesifik, sisanya tetap scripted. | Titik seam Fase 2 sudah siap pakai, tidak perlu kerjaan tambahan di sini. |
+| 4 | Belum ada observation/reward/Gym interface | ⏳ Belum (rencana Fase 1-2) | Kerjaan baru yang memang belum pernah dibutuhkan sebelumnya. |
+| 5 | `random` module-level global dipakai luas | ⏳ Belum disentuh | Sekarang tersebar di [sim/match.py](sim/match.py) (tackle, shot spread, fumble, dll). Aman untuk 1 proses per env (SubprocVecEnv), tapi jadi perhatian kalau nanti threading dalam 1 proses. |
+| 6 | Reward signal alami (skor) sudah ada tapi belum diekspos sebagai reward per-step | ⏳ Belum (rencana Fase 1-2) | `self.score` di [sim/match.py](sim/match.py) — perlu dihitung delta antar step, bukan langsung dipakai. |
 
 ---
 
@@ -55,33 +66,32 @@ Dokumen ini adalah hasil review arsitektur `main.py` saat ini terhadap kebutuhan
 
 ## 3. Rencana Bertahap
 
-### Fase 0 — Refactor Pemisahan Concern
+### Fase 0 — Refactor Pemisahan Concern ✅ SELESAI (v1.1)
 **Tujuan**: memecah `main.py` tanpa mengubah perilaku sama sekali, supaya siap dijadikan dependency oleh env RL.
 
-**Struktur file yang diusulkan**:
+**Struktur file final** (sedikit beda dari proposal awal — tanpa folder pembungkus `futsal_sim/`, karena `sim/`/`render/` memang sudah cukup diletakkan langsung di root project yang sudah ada):
 ```
-futsal_sim/
-├── sim/
-│   ├── __init__.py
-│   ├── config.py          # semua CONFIG constants (baris 28-83 sekarang)
-│   ├── match.py           # class FutsalMatch (physics + game logic, tanpa AI heuristic)
-│   └── scripted_ai.py     # choose_action() sekarang, jadi fungsi/strategy yang di-inject ke FutsalMatch
-├── render/
-│   ├── __init__.py
-│   ├── draw.py            # draw_frame()
-│   └── preview.py         # loop main() sekarang (window + ffmpeg pipe)
-├── main.py                # entrypoint tipis: bikin FutsalMatch + scripted_ai, panggil render/preview
-└── requirements.txt
+sim/
+├── __init__.py         # re-export FutsalMatch, scripted_policy
+├── config.py           # semua CONFIG constants
+├── match.py            # class FutsalMatch (physics + game logic), terima policy_fn
+└── scripted_ai.py       # scripted_policy(match, player) -> (dx, dy)
+render/
+├── __init__.py
+├── draw.py             # draw_frame()
+└── preview.py          # run_preview(match) - loop pygame + placeholder ffmpeg
+main.py                  # entrypoint tipis (24 baris)
 ```
 
-**Tugas konkret**:
-1. Pindahkan block `CONFIG` ke `sim/config.py`, import di tempat lain.
-2. Pindahkan `choose_action` keluar dari `FutsalMatch` jadi fungsi berdiri sendiri `scripted_policy(match, player) -> (dx, dy)`, lalu `FutsalMatch.step()` menerima parameter `policy_fn` (default `scripted_policy`) — ini titik seam paling penting untuk Fase 2.
-3. Pindahkan `draw_frame` + loop pygame dari `main()` ke `render/preview.py`.
-4. Tambah entrypoint `main.py --headless` (atau file terpisah `run_headless.py`) yang cuma manggil `FutsalMatch` + loop `step()` tanpa pygame sama sekali — berguna untuk smoke-test kecepatan simulasi murni.
-5. **Acceptance criteria**: semua behavior/test manual yang sudah divalidasi sepanjang sesi ini (gol, tackle, stun, selebrasi, kickoff) harus identik setelah refactor — jalankan ulang skrip-skrip test headless yang sudah dipakai sesi ini sebagai regression check.
+**Tugas yang selesai**:
+1. ✅ Block `CONFIG` dipindah ke `sim/config.py`.
+2. ✅ `choose_action` dipindah keluar dari `FutsalMatch` jadi `scripted_policy(match, player)` di `sim/scripted_ai.py`. `FutsalMatch.__init__` menerima `policy_fn=None` (default `scripted_policy`), `step()` memanggil `self.policy_fn(self, p)`.
+3. ✅ `draw_frame` + loop pygame dipindah ke `render/draw.py` + `render/preview.py::run_preview(match)`.
+4. ❌ **Belum dikerjakan**: entrypoint/flag `--headless` khusus. Sengaja ditunda — lihat catatan hambatan #2 di §1 (kemungkinan akan ditulis ulang begitu Fase 2/3 punya kebutuhan konkret, jadi belum dibuat sekarang biar tidak dobel kerja).
+5. ✅ **Acceptance criteria terpenuhi** — regression test headless (10 match penuh lewat `from sim import FutsalMatch`) menghasilkan pola skor & rate gol yang konsisten dengan sebelum refactor; fitur detail (tackle, stun, keeper slip, pass, shoot, goal, selebrasi berkumpul, kickoff ke tim yang kebobolan) semua dikonfirmasi masih berfungsi identik lewat trace event log.
+6. ✅ **Bonus — titik seam Fase 2 sudah diverifikasi**: `policy_fn` custom yang meng-override 1 pemain spesifik (return velocity tetap/fixed, meniru `model.predict(obs)`) berhasil dijalankan berdampingan dengan 9 pemain lain yang tetap pakai `scripted_policy`, tanpa perlu ubah `sim/match.py` sama sekali.
 
-**Estimasi**: pekerjaan mekanis, risiko rendah, tidak butuh keputusan desain baru.
+**Hasil**: risiko rendah seperti diperkirakan, tidak ada keputusan desain baru yang dibutuhkan di luar rencana awal.
 
 ---
 
@@ -184,3 +194,5 @@ tensorboard
 ## 6. Urutan Eksekusi yang Disarankan
 
 Mulai dari **Fase 0** (refactor pemisahan file) — risiko rendah, tidak butuh keputusan desain baru, dan jadi prasyarat keras untuk semua fase setelahnya. Fase 1 (spesifikasi) bisa ditulis paralel sambil Fase 0 jalan. Jangan mulai Fase 2 sebelum Fase 0 selesai dan tervalidasi (behavior gameplay tetap identik).
+
+**Status saat ini (v1.1)**: Fase 0 ✅ selesai & tervalidasi. Langkah berikutnya: **Fase 1** (tulis spesifikasi observation/action/reward di §3), baru lanjut Fase 2 (Gym env wrapper).
