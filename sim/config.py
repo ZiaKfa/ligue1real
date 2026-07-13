@@ -9,6 +9,7 @@ VIDEO_W, VIDEO_H = 1080, 1920      # vertical output (TikTok/Reels)
 FPS = 30
 MATCH_SECONDS = 45                 # sim length; trim/loop as you like
 STEPS_PER_FRAME = 4                # physics substeps for stability
+FINAL_SCORE_HOLD_SECONDS = 3       # how long the full-time score screen stays up before closing
 
 # ---------------------------------------------------------------
 # COURT
@@ -25,6 +26,8 @@ PLAYER_COLLISION_RADIUS = PLAYER_RADIUS * 0.7      # smaller physics shape than 
                                                     # so two players can overlap ~0.3 of a diameter
 BALL_RADIUS = 14
 GOAL_WIDTH = 220                   # goal opening centered on top/bottom edge
+GOAL_POST_RADIUS = 9               # physical post at each corner of the goal mouth -
+                                    # blocks shots sneaking in from a sharp side angle
 
 # ---------------------------------------------------------------
 # BALL / POSSESSION
@@ -38,7 +41,7 @@ SHOT_DIST_MIN = 90                                  # closest a shot attempt ran
 SHOT_DIST_MAX = 260                                 # farthest a shot attempt range can roll to (tune to taste)
 SHOT_ANGLE_SPREAD = math.radians(40)                # max random aim error either side of dead-center (radians)
 SHOT_POWER_MIN = 460
-SHOT_POWER_MAX = 590
+SHOT_POWER_MAX = 720
 
 CONTROL_CHANCE = 0.6                                # chance a touch is cleanly controlled, not fumbled loose
 DEFLECT_SPEED = 190                                 # how fast a fumbled/tackled ball squirts away
@@ -52,6 +55,15 @@ KEEPER_SLIP_DURATION = 0.4                          # seconds a slipped keeper c
 
 BACK_LINE = COURT_H * 0.36                          # how deep backs sit in their own half at rest
 FWD_LINE = COURT_H * 0.12                           # how deep forwards sit in their own half at rest
+
+BACK_SPACING = 200                                  # lateral gap between the two backs
+
+# forwards form a winger + central striker pair rather than two symmetric
+# wingers - only one hugs the touchline (toned down from before), the
+# other always sits centrally as the focal point of the attack
+FWD_WING_OFFSET = 220
+FWD_STRIKER_OFFSET = 0
+FWD_SPACING = 600                                   # fallback spacing if players_per_team ever gives >2 forwards
 
 CELEBRATION_DURATION = 2.0                          # seconds the scoring team celebrates before kickoff resets
 

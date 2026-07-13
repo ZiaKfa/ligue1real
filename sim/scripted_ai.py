@@ -9,7 +9,10 @@ rest - the rest of the sim (physics, rendering, recording) doesn't change.
 
 import math
 
-from .config import COURT_X, COURT_Y, COURT_W, COURT_H, PLAYER_RADIUS, BACK_LINE, FWD_LINE
+from .config import (
+    COURT_X, COURT_Y, COURT_W, COURT_H, PLAYER_RADIUS, BACK_LINE, FWD_LINE,
+    FWD_WING_OFFSET, FWD_STRIKER_OFFSET,
+)
 
 
 def scripted_policy(match, player):
@@ -54,15 +57,39 @@ def scripted_policy(match, player):
         return (dx / dist * speed, dy / dist * speed)
 
     role = player["role"]
-    home_x = mid_x + player["formation_x_offset"]
+
+    if role == "FWD":
+        # dynamic winger/striker pair, re-decided every step from the ball's
+        # current position: whichever forward is nearer the ball's side
+        # stretches wide onto that flank; the other tucks in as the central
+        # striker. No fixed identity - either one can be the winger depending
+        # on how play is developing right now.
+        fwd_teammates = [q for q in match.players
+                          if q["team"] == team and q["role"] == "FWD" and q is not player]
+        if fwd_teammates:
+            other = fwd_teammates[0]
+            is_wide_one = abs(bx - px) <= abs(bx - other["body"].position[0])
+            if is_wide_one:
+                wing_side = 1 if bx >= mid_x else -1
+                lateral_offset = wing_side * FWD_WING_OFFSET
+            else:
+                lateral_offset = FWD_STRIKER_OFFSET
+        else:
+            lateral_offset = player["formation_x_offset"]
+    else:
+        lateral_offset = player["formation_x_offset"]
+
+    home_x = mid_x + lateral_offset
     home_y = mid_y - attack_dir * (BACK_LINE if role == "BACK" else FWD_LINE)
 
     if match.possessor is player:
-        # carry the ball toward the attacking goal, but keep some of the
-        # carrier's own lateral position instead of always beelining
-        # straight at the center - that's what gives a shot an angle
+        # carry the ball toward the attacking goal, but hold onto most of
+        # the carrier's own lateral position instead of beelining straight
+        # at the center - that's what makes wing play happen instead of
+        # every attack funneling down the middle, and still gives a shot
+        # an angle once they do cut inside
         goal_y = match.court_bounds[3] if attack_dir == 1 else match.court_bounds[1]
-        target_x = mid_x + player["formation_x_offset"] * 0.6
+        target_x = mid_x + lateral_offset * 0.8
         target_y = goal_y
 
     elif match.possessor is not None and match.possessor["team"] != team:

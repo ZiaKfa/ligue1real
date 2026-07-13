@@ -7,11 +7,12 @@ import pymunk
 
 from .config import (
     COURT_X, COURT_Y, COURT_W, COURT_H, PLAYER_RADIUS, PLAYER_COLLISION_RADIUS,
-    BALL_RADIUS, GOAL_WIDTH, CONTROL_RADIUS, DRIBBLE_LEAD, TACKLE_RADIUS,
+    BALL_RADIUS, GOAL_WIDTH, GOAL_POST_RADIUS, CONTROL_RADIUS, DRIBBLE_LEAD, TACKLE_RADIUS,
     TACKLE_COOLDOWN, PASS_INTERVAL, SHOT_DIST_MIN, SHOT_DIST_MAX, SHOT_ANGLE_SPREAD,
     SHOT_POWER_MIN, SHOT_POWER_MAX, CONTROL_CHANCE, DEFLECT_SPEED, STUN_CHANCE,
     STUN_DURATION, STUN_KNOCKBACK, KEEPER_SLIP_CHANCE, KEEPER_SLIP_DURATION,
-    BACK_LINE, FWD_LINE, CELEBRATION_DURATION,
+    BACK_LINE, FWD_LINE, BACK_SPACING, FWD_SPACING, FWD_WING_OFFSET, FWD_STRIKER_OFFSET,
+    CELEBRATION_DURATION,
 )
 from .scripted_ai import scripted_policy
 
@@ -78,6 +79,19 @@ class FutsalMatch:
             seg.friction = 0.4
             self.space.add(seg)
 
+        # goal posts: real obstacles at each corner of the goal mouth, so a
+        # shot from a sharp side angle clangs off the post instead of
+        # sliding straight in along the goal line
+        self.goal_posts = [
+            (mid_x - GOAL_WIDTH / 2, top), (mid_x + GOAL_WIDTH / 2, top),
+            (mid_x - GOAL_WIDTH / 2, bottom), (mid_x + GOAL_WIDTH / 2, bottom),
+        ]
+        for post_x, post_y in self.goal_posts:
+            post = pymunk.Circle(self.space.static_body, GOAL_POST_RADIUS, (post_x, post_y))
+            post.elasticity = 0.9
+            post.friction = 0.3
+            self.space.add(post)
+
         self.goal_top_x_range = (mid_x - GOAL_WIDTH / 2, mid_x + GOAL_WIDTH / 2)
         self.goal_bottom_x_range = self.goal_top_x_range
         self.court_bounds = (left, top, right, bottom)
@@ -116,10 +130,16 @@ class FutsalMatch:
                      else COURT_Y + COURT_H - PLAYER_RADIUS - 20)
             else:
                 if i - 1 < back_count:
-                    role, slot, slot_count, line = "BACK", i - 1, back_count, BACK_LINE
+                    role, slot, slot_count, line, spacing = "BACK", i - 1, back_count, BACK_LINE, BACK_SPACING
+                    offset = (slot - (slot_count - 1) / 2) * spacing
                 else:
-                    role, slot, slot_count, line = "FWD", i - 1 - back_count, outfield_count - back_count, FWD_LINE
-                offset = (slot - (slot_count - 1) / 2) * 160
+                    role, slot, slot_count, line = (
+                        "FWD", i - 1 - back_count, outfield_count - back_count, FWD_LINE)
+                    if slot_count == 2:
+                        # winger + central striker pair, not two symmetric wingers
+                        offset = FWD_WING_OFFSET if slot == 0 else FWD_STRIKER_OFFSET
+                    else:
+                        offset = (slot - (slot_count - 1) / 2) * FWD_SPACING
                 x = mid_x + offset
                 y = mid_y + side * line
 

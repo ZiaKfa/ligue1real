@@ -8,8 +8,11 @@ import time
 
 import pygame
 
-from sim.config import VIDEO_W, VIDEO_H, FPS, MATCH_SECONDS, STEPS_PER_FRAME, OUTPUT_DIR
-from .draw import draw_frame
+from sim.config import (
+    VIDEO_W, VIDEO_H, FPS, MATCH_SECONDS, STEPS_PER_FRAME, OUTPUT_DIR,
+    FINAL_SCORE_HOLD_SECONDS,
+)
+from .draw import draw_frame, draw_final_score
 
 
 def run_preview(match):
@@ -76,5 +79,19 @@ def run_preview(match):
     # proc.stdin.close()
     # proc.wait()
     # print(f"\nDone. Video saved to: {out_path}")
+
+    # hold a full-time score screen for a few seconds before closing
+    draw_final_score(surface, match, font_big, font_med)
+    preview = pygame.transform.smoothscale(surface, screen.get_size())
+    screen.blit(preview, (0, 0))
+    pygame.display.flip()
+
+    for _ in range(int(FINAL_SCORE_HOLD_SECONDS * FPS)):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                return
+        clock.tick(FPS)
+
     pygame.quit()
-    print("\nPreview finished.")
+    print(f"\nFull time: RED {match.score['red']} - {match.score['blue']} BLUE")

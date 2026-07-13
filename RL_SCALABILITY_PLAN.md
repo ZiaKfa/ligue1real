@@ -9,7 +9,9 @@ Dokumen ini adalah hasil review arsitektur kode saat ini terhadap kebutuhan peng
 | Versi | Konteks | Perubahan |
 |---|---|---|
 | v1.0 | Draft awal (sebelum ada kode dieksekusi dari plan ini) | Review kondisi single-file `main.py` (645 baris), rekomendasi pendekatan (single-agent → shared-policy self-play, PPO/SB3), 6 fase (Fase 0-5), guardrail YAGNI. Semua isi §1-6 di bawah adalah versi awal ini. |
-| v1.1 (saat ini) | Setelah **Fase 0 dieksekusi & diverifikasi** | `main.py` sudah dipecah jadi `sim/` + `render/` + entrypoint tipis sesuai rencana Fase 0. Tabel "hambatan" di §1 dan blok Fase 0 di §3 diperbarui dengan status & lokasi kode terbaru (bukan lagi proposal, tapi hasil nyata + hasil regression test). Detail lengkap ada di §3 → "Fase 0 — Hasil Eksekusi". |
+| v1.1 | Setelah **Fase 0 dieksekusi & diverifikasi** | `main.py` sudah dipecah jadi `sim/` + `render/` + entrypoint tipis sesuai rencana Fase 0. Tabel "hambatan" di §1 dan blok Fase 0 di §3 diperbarui dengan status & lokasi kode terbaru (bukan lagi proposal, tapi hasil nyata + hasil regression test). Detail lengkap ada di §3 → "Fase 0 — Hasil Eksekusi". |
+| v1.2 | Estimasi waktu training (tebakan awal) | Tambah tabel estimasi waktu training kasar (timestep & wall-clock) di §3 Fase 3, sebagai perkiraan awal sebelum ada benchmark nyata. |
+| v1.3 (saat ini) | **Benchmark throughput nyata dijalankan** | Ukur langsung `FutsalMatch.step()` headless pakai `multiprocessing` (1/4/8/12 proses paralel) di hardware ini (12 logical CPU, Windows) — hasil: 3.934 env-frame/detik single-core, naik ke 14.829/detik di 12 proses (scaling tidak linear). Tabel estimasi waktu training di §3 Fase 3 diperbarui pakai angka nyata ini (jauh lebih cepat dari tebakan v1.2), dengan catatan jelas belum termasuk overhead PPO. |
 
 ---
 
@@ -145,6 +147,27 @@ main.py                  # entrypoint tipis (24 baris)
 4. `eval.py`: jalankan N episode policy terlatih lawan `scripted_policy` baseline, laporkan win-rate — ini jadi "regression test" resmi untuk validasi tiap iterasi model baru.
 
 **Acceptance criteria**: training berjalan tanpa crash minimal 1 juta timestep, win-rate eval > 50% lawan scripted AI baseline (baseline paling rendah untuk bilang "policy belajar sesuatu").
+
+**Benchmark throughput nyata** (dijalankan langsung di hardware ini, 12 logical CPU, Windows — bukan tebakan lagi): mengukur `FutsalMatch.step()` murni headless (tanpa pygame, tanpa PPO) pakai `multiprocessing`, meniru cara kerja `SubprocVecEnv`:
+
+| Jumlah proses paralel | Throughput agregat | Per-proses |
+|---|---|---|
+| 1 | 3.934 env-frame/detik | 3.934/detik |
+| 4 | 10.227 env-frame/detik | 2.557/detik |
+| 8 | 13.152 env-frame/detik | 1.644/detik |
+| 12 | 14.829 env-frame/detik | 1.236/detik |
+
+Scaling tidak linear (diminishing return lewat 4 proses — indikasi core fisik lebih sedikit dari 12, sisanya hyperthread/contention memori). **Penting**: ini throughput fisika+AI murni, BELUM termasuk overhead PPO (forward/backward pass jaringan, hitung observation/reward, GAE, dsb.) yang baru ada begitu Fase 2 selesai — jadi ini batas atas (best case), bukan angka final training.
+
+**Estimasi waktu training** (pakai throughput 12-proses di atas sebagai basis, dengan diskon 30-70% untuk overhead PPO yang belum terukur):
+
+| Target | Timestep dibutuhkan | Estimasi waktu* |
+|---|---|---|
+| Policy "melakukan sesuatu yang masuk akal" (bukan random) | ~500rb - 2 juta | ~1-7 menit |
+| Single-agent vs scripted AI, menang konsisten (target Fase 3) | ~2-10 juta | ~4-33 menit |
+| Shared-policy self-play (Fase 4, semua pemain 1 tim) | Jauh lebih banyak — self-play kurang stabil karena lawan ikut belajar (moving target) | Bisa berjam-jam sampai berhari-hari |
+
+\* Jauh lebih cepat dari perkiraan awal (v1.2) — simulasinya ternyata sangat ringan (pymunk dengan 10 circle kecil, tanpa rendering). Yang paling menentukan angka final: overhead PPO yang sebenarnya (baru terukur begitu Fase 2 selesai), reward shaping, dan definisi "cukup baik" (menang 51% vs 90% beda jauh). **Langkah selanjutnya**: begitu Fase 2 (env wrapper) selesai, ulangi benchmark ini dengan PPO asli (bukan cuma physics step) untuk dapat angka final yang akurat.
 
 ---
 
