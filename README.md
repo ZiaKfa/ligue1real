@@ -18,22 +18,33 @@ to TikTok/Reels. Recording is fully automatic; uploading is up to you.
 ## Run
 
 ```
-python main.py
+python main.py                          # live preview window while it records
+python main.py --no-preview             # no window, runs faster (good for unattended generation)
+python main.py --no-preview --batch 5   # generates 5 matches in parallel (4 workers by default)
+python main.py --no-preview --batch 5 --jobs 8   # raise/lower the worker count
 ```
+
+`--batch` with `--no-preview` renders matches across parallel worker processes
+(`--jobs`, default 4) instead of one at a time - each ffmpeg encode is already
+multi-threaded, so going much higher than your core count tends to slow things
+down rather than speed them up.
 
 This will:
 1. Simulate a 45-second 5v5 futsal match with scripted AI
 2. Render it top-down in 1080x1920 (vertical, TikTok/Reels-ready)
-3. Pipe frames directly into ffmpeg -> `output/match_<timestamp>.mp4`
+3. Pipe frames directly into ffmpeg -> `output/goals<total>_<red>-<blue>_<timestamp>.mp4`
+
+The goal count leads the filename (zero-padded) so sorting by name in your
+file browser surfaces the highest-scoring, most postable matches first.
 
 No manual editing needed - the MP4 that comes out is postable as-is.
 Run it again for a new random match; every run is different because
-player positions and ball physics vary.
+player positions, ball physics, and kit colors all vary.
 
 ## Tuning knobs (top of main.py)
 
 - `MATCH_SECONDS` - length of the simulated match
-- `players_per_team` (in `FutsalMatch(players_per_team=3)`) - team size
+- `players_per_team` (in `FutsalMatch(players_per_team=5)`) - team size
 - `COURT_W` / `COURT_H` - court size on screen
 - `GOAL_WIDTH` - how easy it is to score
 
@@ -58,14 +69,15 @@ trained RL agent:
 
 ## Batch-generating multiple videos
 
-To generate a queue of videos to review before posting, wrap a call to
-`main()` in a loop with different seeds:
-
-```python
-for i in range(5):
-    match = FutsalMatch(players_per_team=3, seed=i)
-    ...
 ```
+python main.py --no-preview --batch 10
+```
+
+Generates a queue of videos to review before posting. `--no-preview` skips
+the window so each match renders as fast as your machine can encode it
+instead of being paced to real time, and matches are rendered 4-at-a-time
+in parallel by default (`--jobs N` to change that). Filenames sort by goal
+count, so the liveliest matches are easy to spot in the output folder.
 
 You could also automate *generation* (not upload) with a free
 scheduler like GitHub Actions on a cron trigger, so a fresh batch of

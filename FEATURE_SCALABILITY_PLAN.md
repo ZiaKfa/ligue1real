@@ -29,7 +29,7 @@ String `"red"`/`"blue"` dipakai dengan 2 cara berbeda yang saat ini nyampur:
 
   **Kabar baik**: setiap tempat ini punya pengganti langsung dari data yang SUDAH ada (`home_side`, bernilai -1/+1 per pemain) — `attack_dir` sebenarnya persis `-home_side` selalu, tidak perlu bandingkan string sama sekali. Perbaikannya murni substitusi, bukan desain ulang.
 
-- **Render** ([render/draw.py:44](render/draw.py#L44)) — warna tim juga masih `TEAM_RED if p["team"]=="red" else TEAM_BLUE`, sama masalahnya.
+- **Render** — ✅ **sudah selesai** (di luar rencana ini, dikerjakan lebih dulu): warna tim tidak lagi hardcode `TEAM_RED`/`TEAM_BLUE`. `sim/config.py` punya `random_team_colors()` yang menghasilkan `match.team_colors[team]` (RGB) + `match.team_labels[team]` (nama warna, dari palet `(nama, hue)` yang sudah dipasangkan supaya label selalu cocok dengan warna sebenarnya) acak tiap match. `render/draw.py`, papan skor, dan event log commentary semua baca dari `match.team_colors`/`match.team_labels`, bukan konstanta tetap.
 
 ### Aset gambar — nol infrastruktur, semua prosedural
 
@@ -91,7 +91,7 @@ Ini murni penyatuan interface — tidak menambah kompleksitas baru, malah mengur
 1. Ganti 5 titik hard comparison (§1) dari `team == "red"` jadi `home_side == -1` (atau turunan langsung darinya) — substitusi murni, tanpa redesain.
 2. `FutsalMatch(..., teams=(name_a, name_b))` — default `("red", "blue")` supaya perilaku lama tidak berubah kalau tidak diisi.
 3. `render/draw.py` scoreboard: ganti string hardcode `"RED {..} - {..} BLUE"` jadi baca dari `match.score` langsung (key sudah otomatis jadi nama custom).
-4. Warna tim: pisahkan dari nama — tambah `match.team_colors[name] = (r,g,b)`, default ke `TEAM_RED`/`TEAM_BLUE` kalau tidak diisi (lihat juga §5 saran kit color).
+4. ✅ **Sudah ada**: `match.team_colors[team]` (dan `match.team_labels[team]` untuk nama warnanya) — tapi key-nya masih `team` internal (`"red"`/`"blue"`), belum terhubung ke nama tim custom dari poin 2. Begitu nama tim custom ada, tinggal sambungkan: `team_colors[custom_name]` alih-alih `team_colors["red"]`.
 
 **Acceptance criteria**: ganti nama tim jadi apa saja (termasuk nama dengan spasi/karakter unik) tidak mengubah hasil gameplay sama sekali (regression test seperti biasa — skor & event log identik untuk seed yang sama).
 

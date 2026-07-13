@@ -48,7 +48,7 @@ PASS_INTERVAL = 0.7                                 # max seconds a player holds
 SHOT_DIST_MIN = 90                                  # closest a shot attempt range can roll to
 SHOT_DIST_MAX = 260                                 # farthest a shot attempt range can roll to (tune to taste)
 SHOT_ANGLE_SPREAD = math.radians(40)                # max random aim error either side of dead-center (radians)
-SHOT_POWER_MIN = 400
+SHOT_POWER_MIN = 700
 SHOT_POWER_MAX = 1000
 
 CONTROL_CHANCE = 0.6                                # chance a touch is cleanly controlled, not fumbled loose

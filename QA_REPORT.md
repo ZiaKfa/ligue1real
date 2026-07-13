@@ -35,6 +35,8 @@ Pola yang saya pakai berulang di laporan bawah:
 | [BUG-008](#bug-008) | Regresi: wing play terlalu ekstrem (dua sayap sekaligus) | Low | Playtest manual (visual) | Fixed & Verified |
 | [BUG-009](#bug-009) | Window preview terpotong taskbar Windows | Low | Laporan environment user | Fixed |
 | [BUG-010](#bug-010) | Kiper dan bek saling mengoper bola berulang-ulang (backpass loop) | Medium | Playtest manual (visual + event log) | Fixed & Verified |
+| [BUG-011](#bug-011) | Bola/pemain bisa snap keluar lapangan lewat mulut gawang | High | Playtest manual (visual) | Fixed & Verified |
+| [BUG-012](#bug-012) | Nama warna tim kadang tidak cocok dengan warna yang sebenarnya tampil | Low | Playtest manual (visual) | Fixed & Verified |
 
 ---
 
@@ -223,6 +225,46 @@ Pola yang saya pakai berulang di laporan bawah:
 **Suggested Fix**: Kecualikan kiper dari kandidat target operan, **hanya untuk pemain yang baru saja menerima bola dari kiper itu sendiri** (state `self.received_from_keeper`) — supaya back-pass ke kiper tetap memungkinkan sebagai opsi normal, hanya loop langsungnya yang diblokir.
 **Fix Applied**: Ya — `sim/match.py` (state `received_from_keeper` + exclude bersyarat di `_release_ball`)
 **Verification**: Simulasi headless dipakai untuk memastikan fix bekerja — bukan untuk menemukan bug-nya (bug ini pertama kali dilaporkan lewat playtest manual). Dijalankan 30 seed x 45 detik simulasi, mencari pola operan bolak-balik kiper↔bek yang sama (round-trip berulang dalam jendela waktu singkat): 0 ditemukan setelah fix.
+
+---
+
+### BUG-011
+**Judul**: Bola/pemain bisa snap keluar lapangan lewat mulut gawang
+**Severity**: High — merusak visual & integritas match (bola/pemain hilang dari area bermain)
+
+**Cara Ditemukan**: Playtest manual — user melaporkan dua gejala terkait: (1) bola pembawa bola kadang snap ke luar lapangan lewat dinding atas/bawah, dan (2) pembawa bola menabrak tembok lalu stuck di situ sementara rekan FWD-nya lari keluar lapangan lewat gawang.
+
+**Expected**: Bola dan pemain tidak pernah keluar dari batas lapangan kecuali bola yang memang sedang mencetak gol.
+**Actual**: Bola yang ditempel ke pembawa bola (dribble-glue) bisa terdorong menembus dinding samping/atas/bawah; pemain FWD yang "mendorong maju di depan pembawa bola" bisa lari lurus menembus mulut gawang (yang memang sengaja dibuat terbuka secara fisik) ke area tak terbatas di belakang gawang.
+
+**Root Cause**: Dua sub-penyebab:
+1. Posisi bola saat dribble di-assign langsung (`self.ball_body.position = ...`) berdasarkan arah hadap (`facing`) pemain tanpa dibatasi ke area lapangan — kalau pemain menghadap ke arah dinding, bola ikut terdorong menembusnya.
+2. Formula "FWD dorong maju di depan pembawa bola" (`target_y = posisi_y pembawa bola + attack_dir*220`) tidak dibatasi ke area lapangan, jadi saat pembawa bola sudah dekat gawang lawan, target rekannya bisa jatuh 220px **melewati** garis gawang — dan karena mulut gawang memang gap fisik terbuka (supaya bola bisa masuk), pemain yang x-nya pas di lebar mulut gawang bisa benar-benar lari menembus keluar lapangan lewat sana.
+
+**Suggested Fix**:
+1. Clamp posisi glue bola ke dalam batas lapangan (kecuali persis di lebar mulut gawang, supaya dribble-ke-gawang tetap bisa jadi gol).
+2. Clamp semua `target_x`/`target_y` hasil scripted AI (untuk role apapun) ke dalam batas lapangan sebelum dipakai, di satu tempat generik alih-alih menambal tiap formula satu-satu.
+
+**Fix Applied**: Ya — `sim/match.py::_update_possession` (clamp glue bola) + `sim/scripted_ai.py::scripted_policy` (clamp target generik di akhir fungsi)
+**Verification**: Headless dipakai untuk memastikan fix bekerja (bukan menemukan bug-nya). Sebelum fix: breach dinding saat dribble ditemukan di 20 match (140 kali di dinding samping, 2172 kali di dinding atas/bawah di luar mulut gawang), plus overshoot bola sampai ratusan px saat free-flight. Setelah fix: 0 breach dinding saat dribble maupun free-flight di sampel yang sama; pemain juga tidak lagi pernah ditemukan di luar batas lapangan (0 dari 20 match x 45 detik).
+
+---
+
+### BUG-012
+**Judul**: Nama warna tim kadang tidak cocok dengan warna yang sebenarnya tampil
+**Severity**: Low — kosmetik, tapi membingungkan (papan skor/commentary bilang satu warna, yang tampil warna lain)
+
+**Cara Ditemukan**: Playtest manual — user melaporkan warna dan teks skor/live commentary kadang tidak sesuai.
+
+**Expected**: Label warna tim (mis. "Yellow Player 3") selalu cocok dengan warna lingkaran yang sebenarnya ditampilkan untuk pemain itu.
+**Actual**: Nama warna di-generate dari hue kontinu acak lalu ditebak namanya belakangan lewat pembagian 12 bucket; hue yang jatuh dekat perbatasan dua bucket bisa dapat nama yang tidak cocok dengan bagaimana warnanya sebenarnya terlihat.
+
+**Root Cause**: `random_team_colors()` (versi awal) memilih hue kontinu 0-1 secara acak lalu memetakan hue itu ke nama warna terdekat via pembulatan bucket (`_hue_name`) — pemetaan hue→nama ini cuma aproksimasi, bukan sumber kebenaran yang sama dengan warna yang di-generate.
+
+**Suggested Fix**: Ganti jadi palet diskrit berisi pasangan `(nama, hue)` yang sudah didefinisikan bareng (13 warna bernama) — warna dipilih dengan memilih pasangan dari palet ini langsung (dengan jarak hue minimal 0.25 antar tim), bukan generate hue lalu menebak nama belakangan. Nama dan warna sekarang selalu berasal dari sumber yang sama persis.
+
+**Fix Applied**: Ya — `sim/config.py::random_team_colors` (konstanta `_NAMED_HUES` + `_hue_distance`)
+**Verification**: Sampling 10 seed headless — tiap pasangan nama-warna dicek cocok (mis. `Red` persis `(216,54,54)`, `Blue` persis `(54,60,216)`), dan jarak hue antar tim dalam tiap sampel selalu ≥0.25 (tidak ada dua tim dengan warna terlalu mirip).
 
 ---
 
