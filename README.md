@@ -22,7 +22,7 @@ python main.py
 ```
 
 This will:
-1. Simulate a 45-second 3v3 futsal match with scripted AI
+1. Simulate a 45-second 5v5 futsal match with scripted AI
 2. Render it top-down in 1080x1920 (vertical, TikTok/Reels-ready)
 3. Pipe frames directly into ffmpeg -> `output/match_<timestamp>.mp4`
 

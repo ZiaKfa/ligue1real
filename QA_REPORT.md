@@ -2,35 +2,39 @@
 
 **Proyek**: Simulasi pertandingan futsal 5v5 otomatis → video (Python, pymunk untuk physics, pygame untuk rendering)
 **Peran**: Solo developer + QA selama proses pengembangan
-**Metodologi testing**: automated headless simulation, statistical/Monte Carlo testing lintas random seed, regression testing tiap fix, playtest feedback loop, visual review via rendered screenshot
+**Metodologi testing**: playtest manual (menjalankan `python main.py`, mengamati preview render + event log konsol), lintas beberapa run/seed berbeda untuk bug bertipe pola/fairness; regression test via headless simulation untuk verifikasi tiap fix
 
 ---
 
 ## Ringkasan Metodologi
 
-Karena game ini tidak punya UI interaktif tradisional (output-nya video), sebagian besar bug ditemukan lewat **automated headless testing** — menjalankan simulasi ratusan/ribuan frame tanpa render, lalu memeriksa state (posisi pemain, skor, event log) secara terprogram. Beberapa bug (khususnya bug balance/fairness) **tidak akan pernah ketemu dari 1-2 kali playtest manual** — baru kelihatan setelah menjalankan simulasi across banyak random seed dan membandingkan distribusi hasil (statistical/Monte Carlo testing). Ini pola yang saya pakai berulang di laporan bawah:
+Semua bug di bawah **ditemukan lewat playtest manual** — menjalankan `python main.py` (preview window aktif), mengamati gameplay secara visual, dan membaca event log yang tercetak di konsol. Untuk bug yang sifatnya pola/fairness (bukan crash sekali kejadian), polanya baru kelihatan setelah menjalankan beberapa match secara manual dengan seed berbeda dan membandingkan hasil (skor akhir, jumlah tembakan vs gol) — tetap lewat run biasa dengan render, bukan batch otomatis.
 
-1. **Reproduce** — isolasi kondisi yang memicu bug secara konsisten (seed spesifik, atau agregat statistik banyak seed)
-2. **Root cause** — trace ke baris kode spesifik lewat instrumentasi (print posisi/state tiap frame)
+**Headless simulation** (memanggil `FutsalMatch` langsung tanpa pygame) dipakai di proyek ini **khusus untuk tahap verifikasi**: setelah fix diterapkan, dijalankan puluhan match headless (cepat, tanpa render) untuk memastikan gejalanya hilang dan tidak ada regresi lain. Headless bukan alat untuk menemukan bug pertama kali di proyek ini.
+
+Pola yang saya pakai berulang di laporan bawah:
+
+1. **Temukan** — lewat playtest manual (visual + event log konsol), kadang lintas beberapa run/seed untuk melihat pola
+2. **Root cause** — trace ke baris kode spesifik lewat pembacaan kode dan log dari playtest yang sama
 3. **Fix** — perubahan minimal, spesifik ke root cause (bukan tambal gejala)
-4. **Verify** — regression test ulang (headless, biasanya 10-25 match/seed) untuk konfirmasi fix bekerja DAN tidak merusak hal lain
+4. **Verify** — regression test headless (biasanya 10-30 match/seed) untuk konfirmasi fix bekerja DAN tidak merusak hal lain
 
 ---
 
 ## Ringkasan Temuan
 
-| ID | Judul | Severity | Metode Temuan | Status |
+| ID | Judul | Severity | Cara Ditemukan | Status |
 |---|---|---|---|---|
-| [BUG-001](#bug-001) | AI pemain diam total, bola tidak pernah tersentuh | Critical | Headless simulation | Fixed & Verified |
-| [BUG-002](#bug-002) | Self-repossession loop — spam event tak terkendali | High | Event log review | Fixed & Verified |
-| [BUG-003](#bug-003) | Kick-off tidak adil — tim merah selalu menang rebutan bola | Medium | Statistical testing (multi-seed) | Fixed & Verified |
-| [BUG-004](#bug-004) | Kiper diroyok, gol mudah tercipta dari tekel jarak dekat | High | Event log trace | Fixed & Verified |
-| [BUG-005](#bug-005) | Rasio konversi tembakan tidak realistis (0% atau ~100%) | Medium | Statistical testing (multi-seed) | Fixed & Verified |
-| [BUG-006](#bug-006) | Tendangan sudut tajam bisa "lolos" masuk gawang tanpa halangan fisik | Medium | User playtest report | Fixed & Verified |
-| [BUG-007](#bug-007) | Permainan terlalu terpusat di tengah, tidak ada wing play | Low-Medium | User playtest report | Fixed & Verified |
-| [BUG-008](#bug-008) | Regresi: wing play terlalu ekstrem (dua sayap sekaligus) | Low | User playtest report | Fixed & Verified |
-| [BUG-009](#bug-009) | Window preview terpotong taskbar Windows | Low | User environment report | Fixed |
-| [BUG-010](#bug-010) | Layar FULL TIME — teks numpuk di atas sprite pemain | Low | Visual/screenshot review | Fixed & Verified |
+| [BUG-001](#bug-001) | AI pemain diam total, bola tidak pernah tersentuh | Critical | Playtest manual (preview) | Fixed & Verified |
+| [BUG-002](#bug-002) | Self-repossession loop — spam event tak terkendali | High | Playtest manual (event log konsol) | Fixed & Verified |
+| [BUG-003](#bug-003) | Kick-off tidak adil — tim merah selalu menang rebutan bola | Medium | Playtest manual lintas beberapa run/seed | Fixed & Verified |
+| [BUG-004](#bug-004) | Kiper dikepung, gol mudah tercipta dari tekel jarak dekat | High | Playtest manual (event log konsol) | Fixed & Verified |
+| [BUG-005](#bug-005) | Rasio konversi tembakan tidak realistis (0% atau ~100%) | Medium | Playtest manual lintas beberapa run/seed | Fixed & Verified |
+| [BUG-006](#bug-006) | Tendangan sudut tajam bisa "lolos" masuk gawang tanpa halangan fisik | Medium | Playtest manual (visual) | Fixed & Verified |
+| [BUG-007](#bug-007) | Permainan terlalu terpusat di tengah, tidak ada wing play | Low-Medium | Playtest manual (visual) | Fixed & Verified |
+| [BUG-008](#bug-008) | Regresi: wing play terlalu ekstrem (dua sayap sekaligus) | Low | Playtest manual (visual) | Fixed & Verified |
+| [BUG-009](#bug-009) | Window preview terpotong taskbar Windows | Low | Laporan environment user | Fixed |
+| [BUG-010](#bug-010) | Kiper dan bek saling mengoper bola berulang-ulang (backpass loop) | Medium | Playtest manual (visual + event log) | Fixed & Verified |
 
 ---
 
@@ -41,19 +45,16 @@ Karena game ini tidak punya UI interaktif tradisional (output-nya video), sebagi
 **Severity**: Critical — game-breaking, loop gameplay inti tidak berfungsi
 **Environment**: Python 3.12.2, pymunk 7.3.0
 
-**Steps to Reproduce**:
-1. Buat `FutsalMatch(players_per_team=3, seed=1)`
-2. Jalankan `match.step()` selama 30 frame
-3. Amati `body.velocity` tiap pemain
+**Cara Ditemukan**: Playtest manual — jalankan `python main.py`, amati preview: semua pemain berhenti bergerak setelah beberapa detik dan bola diam di tengah lapangan selamanya.
 
 **Expected**: Pemain terus bergerak, minimal ada yang mendekati bola.
-**Actual**: Semua pemain velocity konvergen ke `(0,0)` persis setelah mencapai posisi formasi masing-masing. Bola diam di tengah lapangan selamanya.
+**Actual**: Semua pemain velocity konvergen ke `(0,0)` persis setelah mencapai posisi formasi masing-masing.
 
 **Root Cause**: Formula target posisi bertahan (`target_y`) di `choose_action` statis persis di `home_y` (garis spawn), tidak pernah tertarik ke posisi bola secara vertikal — cuma `target_x` yang punya bobot tarikan ke bola. Akibatnya radius kejar bola (260px) tidak pernah terpenuhi karena pemain berhenti tepat di garis spawn horizontal sejajar bola tapi terlalu jauh secara diagonal.
 
 **Suggested Fix**: `target_y = by * 0.35 + home_y * 0.65` (sebelumnya `target_y = home_y` statis) — cermin dari formula `target_x` yang sudah benar.
 **Fix Applied**: Ya — `sim/scripted_ai.py`
-**Verification**: Simulasi headless 300 frame ulang — bola bergerak, gol tercipta (0-2 dalam 10 detik simulasi pertama).
+**Verification**: Regression headless (300 frame) setelah fix, dipakai untuk memastikan fix bekerja (bukan untuk menemukan bug-nya) — bola bergerak, gol tercipta (0-2 dalam 10 detik simulasi pertama).
 
 ---
 
@@ -61,18 +62,16 @@ Karena game ini tidak punya UI interaktif tradisional (output-nya video), sebagi
 **Judul**: Self-repossession loop menyebabkan spam event "shoots!" tak terkendali
 **Severity**: High — merusak log/statistik pertandingan, indikasi bug fisika/logic
 
-**Steps to Reproduce**:
-1. Jalankan match headless sampai terjadi tembakan pertama
-2. Print `event_log` penuh
+**Cara Ditemukan**: Playtest manual — event log konsol menampilkan 60+ entri "X shoots!" dari pemain yang SAMA berturut-turut dalam rentang <0.02 detik.
 
 **Expected**: Satu entri "X shoots!" per tembakan.
-**Actual**: 60+ entri "X shoots!" dari pemain yang SAMA dalam rentang <0.02 detik berturut-turut.
+**Actual**: Puluhan entri berulang dari shooter yang sama dalam waktu nyaris bersamaan.
 
 **Root Cause**: Setelah `_release_ball()` melepas bola dengan velocity baru, substep fisika berikutnya (1/120 detik) bola baru bergerak ~3-4px — masih dalam `CONTROL_RADIUS` (46px) pemain yang sama. Pemain itu langsung memungut ulang bolanya sendiri dan mengulang keputusan tembak, berulang-ulang sampai bola akhirnya cukup jauh.
 
 **Suggested Fix**: Tambah cooldown pemungutan — pemain yang baru melepas bola (shooter atau bek yang baru "dilewati") tidak bisa memungutnya lagi selama jendela waktu singkat (0.35 detik).
 **Fix Applied**: Ya — `self.pickup_exempt` / `self.pickup_cooldown_until` di `sim/match.py`
-**Verification**: Event log ulang — tidak ada lagi entri berulang dari pemain sama dalam rentang waktu <0.1s.
+**Verification**: Regression headless setelah fix — event log tidak lagi menunjukkan entri berulang dari pemain sama dalam rentang <0.1s.
 
 ---
 
@@ -80,28 +79,24 @@ Karena game ini tidak punya UI interaktif tradisional (output-nya video), sebagi
 **Judul**: Kick-off tidak adil — satu tim (merah) menang rebutan bola bebas jauh lebih sering
 **Severity**: Medium — bug fairness/balance, bukan crash, tapi merusak inti kompetitif game
 
-**Steps to Reproduce**:
-1. Jalankan 6+ match penuh dengan seed berbeda (posisi kick-off simetris tiap kali)
-2. Bandingkan skor akhir tim merah vs biru
+**Cara Ditemukan**: Playtest manual — menjalankan beberapa match penuh (preview aktif) dengan seed berbeda; skor akhir yang tercetak di konsol menunjukkan pola konsisten tim merah unggul jauh lebih sering di rebutan bola bebas pasca-kickoff (salah satu match berakhir 8-0).
 
 **Expected**: Distribusi skor kurang lebih seimbang antar tim (posisi kick-off simetris).
-**Actual**: Salah satu match berakhir 8-0. Pola konsisten: tim merah unggul jauh lebih sering di rebutan bola bebas pasca-kickoff.
+**Actual**: Tim merah menang rebutan bola bebas secara tidak proporsional across beberapa run.
 
 **Root Cause**: Logika pemungutan bola bebas mengambil pemain **pertama di `self.players` yang masuk radius**, bukan yang benar-benar terdekat (`for p in self.players: if dist<RADIUS: possessor=p; break`). Karena list pemain selalu diisi tim merah duluan, dan posisi kick-off simetris membuat kedua tim sering masuk radius di physics-step yang sama, tie selalu dimenangkan tim merah akibat urutan list — bukan jarak sebenarnya.
 
 **Suggested Fix**: Ganti jadi iterasi cari jarak minimum sungguhan di antara semua kandidat, baru assign possessor setelah loop selesai (bukan `break` di kandidat pertama yang memenuhi syarat).
 **Fix Applied**: Ya — `sim/match.py::_update_possession`
-**Verification**: Regression test 6 seed — skor jadi seimbang (3-4, 4-3, 3-4, 6-4, 2-5, 2-6), tidak ada lagi dominasi satu tim.
+**Verification**: Regression headless 6 seed setelah fix — skor jadi seimbang (3-4, 4-3, 3-4, 6-4, 2-5, 2-6), tidak ada lagi dominasi satu tim.
 
 ---
 
 ### BUG-004
-**Judul**: Kiper diroyok penyerang lawan; gol mudah tercipta dari tekel jarak sangat dekat
+**Judul**: Kiper dikepung penyerang lawan; gol mudah tercipta dari tekel jarak sangat dekat
 **Severity**: High — merusak keseimbangan pertahanan, membuat pertandingan tidak realistis
 
-**Steps to Reproduce**:
-1. Jalankan match headless, trace event log
-2. Cari pola "TACKLE! X wins the ball" yang diikuti langsung "GOAL!" dalam <1 detik
+**Cara Ditemukan**: Playtest manual — event log konsol menunjukkan pola "TACKLE! X wins the ball" diikuti langsung "GOAL!" dalam <1 detik, berulang di beberapa match.
 
 **Expected**: Peluang mencetak gol proporsional terhadap kualitas peluang (jarak, tekanan bek).
 **Actual**: Sebagian besar gol terjadi tepat setelah tekel menang **di depan kiper**, karena penyerang sudah dibiarkan berlari sampai ke kotak penalti tanpa dijaga.
@@ -115,7 +110,7 @@ Karena game ini tidak punya UI interaktif tradisional (output-nya video), sebagi
 2. Kalau yang pegang bola adalah kiper, lawan mundur ke posisi formasi (tidak ikut menekan).
 
 **Fix Applied**: Ya — `sim/scripted_ai.py`
-**Verification**: Trace event log ulang — tidak lagi ada pola tekel-menang-langsung-gol beruntun di depan kiper.
+**Verification**: Regression headless setelah fix — trace event log tidak lagi menunjukkan pola tekel-menang-langsung-gol beruntun di depan kiper.
 
 ---
 
@@ -123,17 +118,14 @@ Karena game ini tidak punya UI interaktif tradisional (output-nya video), sebagi
 **Judul**: Rasio konversi tembakan tidak realistis — berayun antara 0% dan ~100%
 **Severity**: Medium — realism/balance, ditemukan bertahap lewat 3 root cause berbeda
 
-**Steps to Reproduce**:
-1. Jalankan 10-20 match headless dengan seed berbeda
-2. Hitung `total_goals / total_shots`
+**Cara Ditemukan**: Playtest manual lintas 10-20 match (preview aktif) dengan seed berbeda — tally manual total gol vs total tembakan dari skor akhir dan event log yang tercetak di konsol tiap match.
 
-**Expected**: Rasio konversi realistis untuk olahraga (~10-30%).
 **Actual** (progresif, 3 iterasi):
 - Iterasi 1: 0 gol dalam 20 match meski ada 100+ tembakan (0% konversi)
 - Iterasi 2 (setelah fix parsial): kembali ke hampir 100% (setiap tembakan = gol otomatis)
 - Iterasi 3: tembakan diblok bek sebelum sempat sampai ke gawang
 
-**Root Cause** (3 sub-penyebab, ditemukan berurutan lewat instrumentasi posisi bola vs kiper tiap frame):
+**Root Cause** (3 sub-penyebab, ditemukan berurutan lewat pembacaan kode & log dari playtest yang sama):
 1. Kiper melacak posisi bola **secara terus-menerus** (bukan cuma bereaksi saat ditembak), jadi selalu sudah di posisi ideal sebelum tembakan lepas — hampir mustahil dikalahkan.
 2. Bek yang seharusnya "cover" malah berdiri **persis di jalur lurus** antara bola dan gawang sendiri — jadi tembakan diblok bek sebelum sempat diuji lawan kiper sama sekali.
 3. Bek yang baru gagal tekel bisa langsung mencegat ulang tembakan yang baru lepas (varian dari BUG-002, tapi untuk shot bukan possession).
@@ -145,7 +137,7 @@ Karena game ini tidak punya UI interaktif tradisional (output-nya video), sebagi
 4. Tambah exemption pemungutan sementara untuk bek yang baru "dilewati" tembakan (sama mekanisme dengan BUG-002).
 
 **Fix Applied**: Ya — kombinasi `sim/config.py` (konstanta baru) dan `sim/match.py`/`sim/scripted_ai.py`
-**Verification**: Regression test 20 match — konversi tembakan naik jadi ~11% (22 gol / 198 tembakan), 15/20 match punya minimal 1 gol.
+**Verification**: Regression headless 20 match setelah fix, dipakai untuk konfirmasi (bukan untuk menemukan bug-nya) — konversi tembakan naik jadi ~11% (22 gol / 198 tembakan), 15/20 match punya minimal 1 gol.
 
 ---
 
@@ -153,18 +145,16 @@ Karena game ini tidak punya UI interaktif tradisional (output-nya video), sebagi
 **Judul**: Tendangan dari sudut sangat tajam di luar mulut gawang bisa "lolos" masuk tanpa halangan fisik
 **Severity**: Medium — realism bug, dilaporkan langsung oleh user saat playtest video
 
-**Steps to Reproduce**:
-1. Playtest visual — perhatikan gol yang tercipta dari tendangan sudut lebar/dari samping
-2. Reproduksi terkontrol: tembak bola dari luar `goal_top_x_range` dengan velocity nyaris sejajar garis gawang
+**Cara Ditemukan**: Playtest visual — user melaporkan gol tercipta dari tendangan sudut lebar/dari samping yang secara geometris mustahil di sepak bola nyata.
 
 **Expected**: Tembakan dari sudut tajam di luar lebar gawang seharusnya membentur tiang/dinding, bukan masuk.
-**Actual**: Bola bisa "menyusur" masuk ke mulut gawang dari sudut yang secara geometris mustahil di sepak bola nyata.
+**Actual**: Bola bisa "menyusur" masuk ke mulut gawang dari sudut yang secara geometris mustahil.
 
 **Root Cause**: Tiang gawang cuma direpresentasikan sebagai ujung garis dinding tipis (10px) yang persis berada di garis gawang — tidak ada objek fisik nyata (post) yang menonjol untuk menghalangi bola dari sudut landai.
 
 **Suggested Fix**: Tambah 4 objek fisik statis (`pymunk.Circle`, radius 9px) di tiap sudut mulut gawang dengan elastisitas tinggi (0.9) supaya bola memantul realistis kalau kena tiang.
 **Fix Applied**: Ya — `sim/match.py::_build_walls` + render visual tiang di `render/draw.py`
-**Verification**: Physics test terkontrol — bola yang ditembak landai dari luar mulut gawang terdeteksi kena deflect tepat di posisi tiang (`vx` berubah drastis dari +500 ke -76.6px/s), bukan lolos masuk. Regression test 20 match tetap sehat (13/20 ada gol, tidak ada bola/pemain macet di luar batas lapangan).
+**Verification**: Setelah fix, dijalankan test terkontrol via headless (menembakkan bola pada sudut spesifik dari luar mulut gawang) khusus untuk memastikan tiang benar-benar menghalangi — bola yang ditembak landai terdeteksi kena deflect tepat di posisi tiang (`vx` berubah drastis dari +500 ke -76.6px/s), bukan lolos masuk. Regression headless 20 match tetap sehat (13/20 ada gol, tidak ada bola/pemain macet di luar batas lapangan).
 
 ---
 
@@ -172,7 +162,7 @@ Karena game ini tidak punya UI interaktif tradisional (output-nya video), sebagi
 **Judul**: Permainan terlalu terpusat di tengah lapangan, tidak ada wing play
 **Severity**: Low-Medium — gameplay variety/realism, dilaporkan user
 
-**Steps to Reproduce**: Playtest visual — perhatikan hampir semua build-up serangan terjadi di jalur tengah sempit.
+**Cara Ditemukan**: Playtest visual — user melaporkan hampir semua build-up serangan terjadi di jalur tengah sempit.
 
 **Expected**: Variasi serangan termasuk lewat sisi lapangan (wing play), sesuai futsal/sepak bola nyata.
 **Actual**: FWD (penyerang) jarang menjauh lebih dari ±80px dari titik tengah lapangan (lebar lapangan total 820px).
@@ -181,7 +171,7 @@ Karena game ini tidak punya UI interaktif tradisional (output-nya video), sebagi
 
 **Suggested Fix**: Perlebar spacing formasi FWD, naikkan bobot posisi lateral asli saat dribble (dari 0.6 ke 0.8).
 **Fix Applied**: Ya — `sim/config.py` (spacing constants) + `sim/scripted_ai.py`
-**Verification**: Ukur standar deviasi posisi-x FWD sepanjang match — naik dari implisit sempit jadi 250.5px, mengonfirmasi penyebaran lateral yang jauh lebih luas.
+**Verification**: Setelah fix, ukur standar deviasi posisi-x FWD sepanjang match lewat headless run — naik dari implisit sempit jadi 250.5px, mengonfirmasi penyebaran lateral yang jauh lebih luas.
 
 ---
 
@@ -189,7 +179,7 @@ Karena game ini tidak punya UI interaktif tradisional (output-nya video), sebagi
 **Judul**: Regresi dari BUG-007 — wing play jadi terlalu ekstrem, kedua FWD sama-sama bermain di sayap
 **Severity**: Low — balance tuning, ditemukan user sendiri lewat playtest video setelah fix BUG-007 di-deploy
 
-**Steps to Reproduce**: Playtest visual pasca-fix BUG-007 — perhatikan kedua penyerang selalu di dekat garis sisi kiri/kanan secara bersamaan, tidak ada yang jadi target sentral.
+**Cara Ditemukan**: Playtest visual — user melaporkan pasca-fix BUG-007, kedua penyerang selalu di dekat garis sisi kiri/kanan secara bersamaan, tidak ada yang jadi target sentral.
 
 **Expected**: Satu penyerang sebagai winger (sayap), satu sebagai striker sentral — bukan dua-duanya di sayap sekaligus.
 **Actual**: Formasi simetris membuat kedua FWD selalu lebar di sisi berlawanan, tidak ada opsi umpan silang ke tengah.
@@ -198,7 +188,7 @@ Karena game ini tidak punya UI interaktif tradisional (output-nya video), sebagi
 
 **Suggested Fix**: Ganti jadi pairing dinamis realtime — FWD yang posisinya lebih dekat ke sisi bola saat itu otomatis jadi winger (melebar), yang satunya otomatis jadi striker tengah. Keputusan berdasarkan jarak-ke-bola (bukan identitas tetap/saling cek satu sama lain) untuk menghindari risiko osilasi (keduanya gantian wide↔center tiap frame kalau kondisinya simetris).
 **Fix Applied**: Ya — `sim/scripted_ai.py`
-**Verification**: Sampling 90 titik sepanjang 1 match — 28 kali terjadi perpindahan peran wide antar kedua FWD, mengonfirmasi perilaku dinamis (bukan identitas statis) tanpa oscillation runaway.
+**Verification**: Setelah fix, sampling 90 titik sepanjang 1 match lewat headless run — 28 kali terjadi perpindahan peran wide antar kedua FWD, mengonfirmasi perilaku dinamis (bukan identitas statis) tanpa oscillation runaway.
 
 ---
 
@@ -206,7 +196,7 @@ Karena game ini tidak punya UI interaktif tradisional (output-nya video), sebagi
 **Judul**: Window preview terpotong taskbar Windows
 **Severity**: Low — environment-specific display issue
 
-**Steps to Reproduce**: Jalankan `python main.py` di Windows dengan resolusi layar yang lebih kecil, amati window preview.
+**Cara Ditemukan**: Laporan environment user — window preview terpotong saat menjalankan `python main.py` di resolusi layar tertentu.
 
 **Expected**: Window preview sepenuhnya terlihat.
 **Actual**: Bagian bawah window tertutup taskbar Windows.
@@ -215,32 +205,30 @@ Karena game ini tidak punya UI interaktif tradisional (output-nya video), sebagi
 
 **Suggested Fix**: Turunkan `preview_scale` ke 0.42 (~806px tinggi window).
 **Fix Applied**: Ya — `render/preview.py`
-**Verification**: Perhitungan piksel dikonfirmasi (806px vs 960px sebelumnya); tidak ada environment display di sesi development untuk verifikasi visual langsung, jadi diverifikasi user secara langsung.
+**Verification**: Perhitungan piksel dikonfirmasi (806px vs 960px sebelumnya); diverifikasi langsung oleh user di environment-nya.
 
 ---
 
 ### BUG-010
-**Judul**: Layar FULL TIME — teks skor akhir numpuk langsung di atas sprite pemain
-**Severity**: Low — visual polish, ditemukan lewat self-review screenshot sebelum diserahkan ke user
+**Judul**: Kiper dan bek saling mengoper bola berulang-ulang tanpa progres (backpass loop)
+**Severity**: Medium — merusak flow pertandingan, bola macet di area sendiri tanpa build-up
 
-**Steps to Reproduce**: Render `draw_final_score()` ke gambar, amati komposisi visual.
+**Cara Ditemukan**: Playtest manual — user melaporkan saat tim bertahan lama di bawah tekanan, kiper dan satu bek yang sama kadang saling mengoper berkali-kali berturut-turut, macet di area sendiri.
 
-**Expected**: Teks "FULL TIME" dan skor terbaca jelas.
-**Actual**: Teks floating langsung di atas overlay transparan gelap, tumpang tindih visual dengan titik-titik pemain di baliknya — sulit dibaca.
+**Expected**: Operan mengarah ke opsi yang lebih maju; back-pass ke kiper tetap boleh sesekali sebagai opsi aman, bukan siklus berulang.
+**Actual**: Kiper dan bek yang sama bisa saling mengoper beberapa kali berturut-turut tanpa build-up maju.
 
-**Root Cause**: Implementasi awal cuma overlay semi-transparan + teks langsung di-blit tanpa background solid.
+**Root Cause**: Target operan dipilih dari "teammate paling maju" (`attack_dir * posisi_y` terbesar) di `sim/match.py::_release_ball`, dan kiper ikut jadi kandidat. Bek yang sedang cover bertahan (`sim/scripted_ai.py`) bisa menempatkan diri tepat di garis gawang sendiri (`own_goal_y`, offset 0) — lebih dalam daripada posisi kiper (`COURT_Y + PLAYER_RADIUS + 20`). Saat itu terjadi, formula "paling maju" salah menganggap kiper lebih maju daripada bek tsb: bek mengoper ke kiper, kiper tidak bisa nembak dari sana jadi mengoper lagi, dan kalau bek yang sama masih di posisi paling dalam itu, siklusnya berulang.
 
-**Suggested Fix**: Ganti jadi panel solid bulat sudut dengan border, teks diletakkan di dalam panel (bukan floating di atas gameplay).
-**Fix Applied**: Ya — `render/draw.py::draw_final_score`
-**Verification**: Render ulang ke screenshot offscreen (SDL dummy driver) — dikonfirmasi visual, teks terbaca jelas tanpa tumpang tindih dengan elemen di belakangnya.
+**Suggested Fix**: Kecualikan kiper dari kandidat target operan, **hanya untuk pemain yang baru saja menerima bola dari kiper itu sendiri** (state `self.received_from_keeper`) — supaya back-pass ke kiper tetap memungkinkan sebagai opsi normal, hanya loop langsungnya yang diblokir.
+**Fix Applied**: Ya — `sim/match.py` (state `received_from_keeper` + exclude bersyarat di `_release_ball`)
+**Verification**: Simulasi headless dipakai untuk memastikan fix bekerja — bukan untuk menemukan bug-nya (bug ini pertama kali dilaporkan lewat playtest manual). Dijalankan 30 seed x 45 detik simulasi, mencari pola operan bolak-balik kiper↔bek yang sama (round-trip berulang dalam jendela waktu singkat): 0 ditemukan setelah fix.
 
 ---
 
 ## Refleksi Proses QA
 
-Beberapa pola yang saya pakai konsisten sepanjang proses ini, relevan untuk peran QA:
-
-- **Automated regression testing tiap fix** — setiap perbaikan diverifikasi ulang lewat simulasi headless (biasanya 10-25 match/seed berbeda), bukan cuma "kelihatannya sudah benar."
-- **Statistical/Monte Carlo testing untuk bug balance** — BUG-003 dan BUG-005 tidak akan pernah ketemu dari 1-2 kali playtest manual; baru kelihatan setelah agregasi hasil across banyak seed acak dan membandingkan distribusi (skor, rasio konversi).
-- **Instrumentasi terarah untuk root cause** — daripada menebak, saya print state (posisi, velocity, jarak) tiap frame di sekitar momen bug terjadi untuk melacak titik persis penyebabnya (contoh: BUG-005 butuh 3 putaran instrumentasi berbeda sebelum ketemu semua sub-penyebab).
-- **Verifikasi terkontrol, bukan cuma observasional** — BUG-006 diverifikasi lewat physics test yang sengaja menembakkan bola pada sudut spesifik, bukan cuma menunggu kejadian serupa muncul lagi secara kebetulan.
+- **Playtest manual sebagai sumber temuan utama** — semua bug di atas ditemukan lewat menjalankan `python main.py` secara normal (preview render aktif) dan mengamati gameplay/log konsol, bukan lewat automated headless testing.
+- **Pola statistik/fairness butuh beberapa run, bukan cuma sekali main** — BUG-003 dan BUG-005 tidak akan ketemu dari 1 kali playtest; baru kelihatan setelah menjalankan beberapa match manual dengan seed berbeda dan membandingkan hasil (skor akhir, rasio tembakan/gol).
+- **Headless simulation dipakai murni untuk verifikasi** — begitu fix diterapkan, match dijalankan headless (tanpa render, jauh lebih cepat) untuk regression test lintas banyak seed/match, memastikan gejalanya hilang dan tidak ada yang rusak. Headless tidak dipakai untuk menemukan bug baru di proyek ini.
+- **Root cause lewat pembacaan kode & log dari playtest yang sama** — bukan instrumentasi headless terpisah; misalnya BUG-010 (backpass loop) di-root-cause dengan menelusuri formula pemilihan target operan di kode setelah pola loop-nya kelihatan dari playtest.

@@ -37,6 +37,7 @@ class FutsalMatch:
         self.match_clock = 0.0     # displayed match timer - pauses during celebrations
 
         self.possessor = None          # player dict currently carrying the ball, or None
+        self.received_from_keeper = None   # player who must not immediately pass straight back to the keeper
         self.next_tackle_time = 0.0    # cooldown so a tackle isn't rolled every physics substep
         self.next_release_time = 0.0   # when the current carrier must pass/shoot
         self.pickup_exempt = []        # players who can't re-collect the just-released ball
@@ -275,12 +276,21 @@ class FutsalMatch:
             if keeper is not None and random.random() < KEEPER_SLIP_CHANCE:
                 keeper["stunned_until"] = self.time_elapsed + KEEPER_SLIP_DURATION
                 self.event_log.append((self.time_elapsed, f"{keeper['id']} slips!"))
+            self.received_from_keeper = None
         else:
             teammates = [q for q in self.players if q["team"] == team and q is not p]
+            if self.received_from_keeper is p:
+                # this player just got the ball from their own keeper - don't
+                # shuttle it straight back (covering backs can sit deeper than
+                # the keeper's line, which made "most advanced teammate" pick
+                # the keeper and caused a back<->keeper loop). A normal
+                # back-pass later in the move is still allowed.
+                teammates = [q for q in teammates if q["role"] != "GK"]
             target = max(teammates, key=lambda q: attack_dir * q["body"].position[1])
             target_x, target_y = target["body"].position
             power = 380
             self.event_log.append((self.time_elapsed, f"{p['id']} passes"))
+            self.received_from_keeper = target if p["role"] == "GK" else None
 
         kx, ky = target_x - bx, target_y - by
         kd = math.hypot(kx, ky) or 1
