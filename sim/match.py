@@ -7,12 +7,12 @@ import pymunk
 
 from .config import (
     COURT_X, COURT_Y, COURT_W, COURT_H, PLAYER_RADIUS, PLAYER_COLLISION_RADIUS,
-    BALL_RADIUS, GOAL_WIDTH, GOAL_POST_RADIUS, CONTROL_RADIUS, DRIBBLE_LEAD, TACKLE_RADIUS,
+    BALL_RADIUS, GOAL_WIDTH, GOAL_POST_RADIUS, CONTROL_RADIUS, DRIBBLE_LEAD, BALL_FOLLOW_EASE, TACKLE_RADIUS,
     TACKLE_COOLDOWN, PASS_INTERVAL, SHOT_DIST_MIN, SHOT_DIST_MAX, SHOT_ANGLE_SPREAD,
     SHOT_POWER_MIN, SHOT_POWER_MAX, CONTROL_CHANCE, DEFLECT_SPEED, STUN_CHANCE,
     STUN_DURATION, STUN_KNOCKBACK, KEEPER_SLIP_CHANCE, KEEPER_SLIP_DURATION,
     BACK_LINE, FWD_LINE, BACK_SPACING, FWD_SPACING, FWD_WING_OFFSET, FWD_STRIKER_OFFSET,
-    CELEBRATION_DURATION,
+    CELEBRATION_DURATION, FACING_MIN_SPEED, FACING_TURN_RATE, random_team_colors,
 )
 from .scripted_ai import scripted_policy
 
@@ -32,6 +32,7 @@ class FutsalMatch:
         self.space.damping = 0.55  # friction-like slowdown each step
 
         self.score = {"red": 0, "blue": 0}
+        self.team_colors, self.team_labels = random_team_colors()
         self.event_log = []  # (time, text) for on-screen captions
         self.time_elapsed = 0.0    # simulation clock - always runs, drives cooldowns
         self.match_clock = 0.0     # displayed match timer - pauses during celebrations
@@ -150,25 +151,55 @@ class FutsalMatch:
             shape.friction = 0.6
             shape.collision_type = 2
             self.space.add(body, shape)
+            attack_dir = 1 if team == "red" else -1
             self.players.append({
                 "body": body, "shape": shape, "team": team,
-                "home_side": side, "id": f"{team}_{i}",
+                "home_side": side, "id": f"{team}_{i}", "number": i + 1,
                 "role": role,
                 "formation_x_offset": offset,
                 "spawn_pos": (x, y),
                 "stunned_until": 0.0,
+                "facing": (0.0, attack_dir),  # unit vector; starts facing the attacking goal
             })
+
+    def _name(self, p):
+        """Human-readable player label for commentary, e.g. "Magenta Player 1"."""
+        return f"{self.team_labels[p['team']]} Player {p['number']}"
 
     # -- step --------------------------------------------------------
     def step(self, dt):
+        bx, by = self.ball_body.position
         for p in self.players:
             desired_vx, desired_vy = self.policy_fn(self, p)
             cur_vx, cur_vy = p["body"].velocity
             turn = 0.25  # 0-1: how fast a player accelerates/turns toward its desired velocity
-            p["body"].velocity = (
-                cur_vx + (desired_vx - cur_vx) * turn,
-                cur_vy + (desired_vy - cur_vy) * turn,
-            )
+            new_vx = cur_vx + (desired_vx - cur_vx) * turn
+            new_vy = cur_vy + (desired_vy - cur_vy) * turn
+            p["body"].velocity = (new_vx, new_vy)
+
+            if p["role"] == "GK":
+                # keepers track the ball with their body even while
+                # shuffling sideways along the goal line - basing facing on
+                # velocity alone would make them "face" purely sideways
+                px, py = p["body"].position
+                target_fx, target_fy = bx - px, by - py
+                fdist = math.hypot(target_fx, target_fy) or 1
+                target_fx, target_fy = target_fx / fdist, target_fy / fdist
+            else:
+                speed = math.hypot(new_vx, new_vy)
+                if speed >= FACING_MIN_SPEED:
+                    target_fx, target_fy = new_vx / speed, new_vy / speed
+                else:
+                    target_fx, target_fy = p["facing"]  # no strong signal - hold current facing
+
+            # pivot gradually toward the target facing instead of snapping
+            # straight to it - a sharp juke/turn shouldn't instantly flip
+            # which side the ball is glued to
+            old_fx, old_fy = p["facing"]
+            fx = old_fx + (target_fx - old_fx) * FACING_TURN_RATE
+            fy = old_fy + (target_fy - old_fy) * FACING_TURN_RATE
+            fdist2 = math.hypot(fx, fy) or 1
+            p["facing"] = (fx / fdist2, fy / fdist2)
 
         self.space.step(dt)
         self.time_elapsed += dt
@@ -212,8 +243,29 @@ class FutsalMatch:
         px, py = p["body"].position
         attack_dir = 1 if p["team"] == "red" else -1
 
-        # glue the ball to its carrier, slightly ahead in the attack direction
-        self.ball_body.position = (px, py + attack_dir * DRIBBLE_LEAD)
+        # glue the ball to its carrier, slightly ahead of wherever they're
+        # actually facing (last moving direction) - not always straight
+        # toward the opponent's goal, so dribbling sideways/backward looks right
+        fx, fy = p["facing"]
+        bx_new = px + fx * DRIBBLE_LEAD
+        by_new = py + fy * DRIBBLE_LEAD
+
+        # a carrier near a wall can face straight into it - clamp so the
+        # glued ball can't snap outside the court, except through the goal
+        # mouth itself (dribbling the ball into the net is still allowed)
+        left, top, right, bottom = self.court_bounds
+        bx_new = min(max(bx_new, left + BALL_RADIUS), right - BALL_RADIUS)
+        lo, hi = self.goal_top_x_range
+        if not (lo <= bx_new <= hi):
+            by_new = min(max(by_new, top + BALL_RADIUS), bottom - BALL_RADIUS)
+
+        # ease toward the glue point instead of snapping straight to it -
+        # a hard position reset every step is what made dribbling look rigid
+        cur_bx, cur_by = self.ball_body.position
+        bx_new = cur_bx + (bx_new - cur_bx) * BALL_FOLLOW_EASE
+        by_new = cur_by + (by_new - cur_by) * BALL_FOLLOW_EASE
+
+        self.ball_body.position = (bx_new, by_new)
         self.ball_body.velocity = p["body"].velocity
 
         # a defender close enough gets a 50/50 shot at winning the ball
@@ -227,7 +279,7 @@ class FutsalMatch:
                     if random.random() < 0.5:
                         # the ball is knocked loose, not cleanly won - it
                         # squirts away for a genuine 50/50 second ball
-                        self.event_log.append((self.time_elapsed, f"TACKLE! {opp['id']} knocks it loose"))
+                        self.event_log.append((self.time_elapsed, f"TACKLE! {self._name(opp)} knocks it loose"))
                         angle = random.uniform(0, 2 * math.pi)
                         self.ball_body.velocity = (math.cos(angle) * DEFLECT_SPEED, math.sin(angle) * DEFLECT_SPEED)
                         self.possessor = None
@@ -270,12 +322,12 @@ class FutsalMatch:
             target_x = bx + math.cos(angle) * 1000
             target_y = by + math.sin(angle) * 1000
             power = random.uniform(SHOT_POWER_MIN, SHOT_POWER_MAX)
-            self.event_log.append((self.time_elapsed, f"{p['id']} shoots!"))
+            self.event_log.append((self.time_elapsed, f"{self._name(p)} shoots!"))
 
             keeper = next((q for q in self.players if q["team"] != team and q["role"] == "GK"), None)
             if keeper is not None and random.random() < KEEPER_SLIP_CHANCE:
                 keeper["stunned_until"] = self.time_elapsed + KEEPER_SLIP_DURATION
-                self.event_log.append((self.time_elapsed, f"{keeper['id']} slips!"))
+                self.event_log.append((self.time_elapsed, f"{self._name(keeper)} slips!"))
             self.received_from_keeper = None
         else:
             teammates = [q for q in self.players if q["team"] == team and q is not p]
@@ -289,7 +341,7 @@ class FutsalMatch:
             target = max(teammates, key=lambda q: attack_dir * q["body"].position[1])
             target_x, target_y = target["body"].position
             power = 380
-            self.event_log.append((self.time_elapsed, f"{p['id']} passes"))
+            self.event_log.append((self.time_elapsed, f"{self._name(p)} passes"))
             self.received_from_keeper = target if p["role"] == "GK" else None
 
         kx, ky = target_x - bx, target_y - by
@@ -316,7 +368,15 @@ class FutsalMatch:
         dx, dy = ax - fx, ay - fy
         d = math.hypot(dx, dy) or 1
         player["body"].velocity = (dx / d * STUN_KNOCKBACK, dy / d * STUN_KNOCKBACK)
-        self.event_log.append((self.time_elapsed, f"{player['id']} is stunned!"))
+        self.event_log.append((self.time_elapsed, f"{self._name(player)} is stunned!"))
+
+        if self.possessor is player:
+            # can't stay in control while reeling from the hit - ball spills loose
+            angle = random.uniform(0, 2 * math.pi)
+            self.ball_body.velocity = (math.cos(angle) * DEFLECT_SPEED, math.sin(angle) * DEFLECT_SPEED)
+            self.possessor = None
+            self.pickup_exempt = [player]
+            self.pickup_cooldown_until = self.time_elapsed + 0.3
 
     def _check_goal(self):
         bx, by = self.ball_body.position
@@ -330,7 +390,7 @@ class FutsalMatch:
 
         if scored:
             self.score[scored] += 1
-            self.event_log.append((self.time_elapsed, f"GOAL! {scored.upper()} scores!"))
+            self.event_log.append((self.time_elapsed, f"GOAL! {self.team_labels[scored].upper()} scores!"))
 
             # backs only join the celebration if they were already forward,
             # in the opponent's half, when the goal went in - forwards always join

@@ -11,7 +11,7 @@ import math
 
 from .config import (
     COURT_X, COURT_Y, COURT_W, COURT_H, PLAYER_RADIUS, BACK_LINE, FWD_LINE,
-    FWD_WING_OFFSET, FWD_STRIKER_OFFSET,
+    FWD_WING_OFFSET, FWD_STRIKER_OFFSET, PENALTY_BOX_WIDTH, PENALTY_BOX_DEPTH,
 )
 
 
@@ -45,12 +45,21 @@ def scripted_policy(match, player):
     mid_y = COURT_Y + COURT_H / 2
 
     if player["role"] == "GK":
-        # stay on the goal line, shuffling sideways to track the ball
+        # roam the whole penalty box, not just the goal mouth width - shuffle
+        # sideways to track the ball, and edge off the line as the ball gets
+        # deeper into the box (classic "narrow the angle" positioning)
         side = player["home_side"]
-        lo, hi = match.goal_top_x_range
-        target_x = min(max(bx, lo + PLAYER_RADIUS), hi - PLAYER_RADIUS)
-        target_y = (COURT_Y + PLAYER_RADIUS + 20 if side == -1
-                    else COURT_Y + COURT_H - PLAYER_RADIUS - 20)
+        box_lo = mid_x - PENALTY_BOX_WIDTH / 2
+        box_hi = mid_x + PENALTY_BOX_WIDTH / 2
+        target_x = min(max(bx, box_lo + PLAYER_RADIUS), box_hi - PLAYER_RADIUS)
+
+        rest_y = (COURT_Y + PLAYER_RADIUS + 20 if side == -1
+                  else COURT_Y + COURT_H - PLAYER_RADIUS - 20)
+        goal_line_y = COURT_Y if side == -1 else COURT_Y + COURT_H
+        into_court_dir = 1 if side == -1 else -1
+        ball_depth = max(0.0, min(PENALTY_BOX_DEPTH, (by - goal_line_y) * into_court_dir))
+        target_y = rest_y + into_court_dir * ball_depth * 0.3
+
         dx, dy = target_x - px, target_y - py
         dist = math.hypot(dx, dy) or 1
         speed = 100
@@ -89,8 +98,27 @@ def scripted_policy(match, player):
         # every attack funneling down the middle, and still gives a shot
         # an angle once they do cut inside
         goal_y = match.court_bounds[3] if attack_dir == 1 else match.court_bounds[1]
-        target_x = mid_x + lateral_offset * 0.8
+        target_x = mid_x + lateral_offset * 0.95
         target_y = goal_y
+
+        # a defender closing in from ahead gets juked sideways/backward
+        # instead of driven straight into - avoids crowding a defender
+        # (or the wall behind them) head-on every single time
+        nearest_opp = min(
+            (q for q in match.players if q["team"] != team),
+            key=lambda q: math.hypot(q["body"].position[0] - px, q["body"].position[1] - py),
+        )
+        ox, oy = nearest_opp["body"].position
+        opp_dist = math.hypot(ox - px, oy - py)
+        blocking_ahead = (oy - py) * attack_dir > 0
+        if opp_dist < 100 and blocking_ahead:
+            away_side = -1 if ox >= px else 1
+            target_x = px + away_side * 150
+            if abs(py - goal_y) < 80:
+                # boxed in right against the goal line - step back for room
+                target_y = py - attack_dir * 40
+            # otherwise just sidestep (target_y stays goal_y) - combined
+            # with the x shift that already reads as a diagonal juke
 
     elif match.possessor is not None and match.possessor["team"] != team:
         if match.possessor["role"] == "GK":
@@ -136,7 +164,33 @@ def scripted_policy(match, player):
             target_x = bx * 0.35 + home_x * 0.65
             target_y = by * 0.35 + home_y * 0.65
 
+    # never send a player's target beyond the playable pitch - e.g. "push
+    # forward ahead of the ball carrier" can otherwise extend past the goal
+    # line, and the goal mouth is a real physical gap (so nothing stops a
+    # player lined up with it from running straight out of bounds through it)
+    margin = PLAYER_RADIUS
+    target_x = min(max(target_x, COURT_X + margin), COURT_X + COURT_W - margin)
+    target_y = min(max(target_y, COURT_Y + margin), COURT_Y + COURT_H - margin)
+
     dx, dy = target_x - px, target_y - py
+    tdist = math.hypot(dx, dy) or 1
+    dx, dy = dx / tdist, dy / tdist  # unit vector toward the target
+
+    # nudge away from a teammate standing right on top of you - weighted
+    # as a unit vector too, so it can actually outweigh target-seeking when
+    # severely overlapped instead of being drowned out by a distant target.
+    # covers every transition (e.g. both forwards separating after the
+    # keeper picks up a save) without needing per-scenario spacing logic
+    for mate in match.players:
+        if mate is player or mate["team"] != team:
+            continue
+        mx, my = mate["body"].position
+        mdist = math.hypot(px - mx, py - my)
+        if 0 < mdist < PLAYER_RADIUS * 2:
+            overlap = (PLAYER_RADIUS * 2 - mdist) / (PLAYER_RADIUS * 2)  # 0..1
+            dx += (px - mx) / mdist * overlap * 2.0
+            dy += (py - my) / mdist * overlap * 2.0
+
     dist = math.hypot(dx, dy) or 1
     speed = 260
     return (dx / dist * speed, dy / dist * speed)

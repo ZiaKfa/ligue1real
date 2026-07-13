@@ -4,8 +4,8 @@ import pygame
 
 from sim.config import (
     VIDEO_W, VIDEO_H, COURT_X, COURT_Y, COURT_W, COURT_H, COURT_COLOR,
-    LINE_COLOR, GOAL_WIDTH, GOAL_POST_RADIUS, TEAM_RED, TEAM_BLUE, PLAYER_RADIUS,
-    BALL_COLOR, BALL_RADIUS, BG_COLOR,
+    LINE_COLOR, GOAL_WIDTH, GOAL_POST_RADIUS, PLAYER_RADIUS,
+    BALL_COLOR, BALL_RADIUS, BG_COLOR, PENALTY_BOX_WIDTH, PENALTY_BOX_DEPTH,
 )
 from sim.match import FutsalMatch
 
@@ -33,6 +33,17 @@ def draw_frame(surface, match: FutsalMatch, font_big, font_med):
     pygame.draw.line(surface, (255, 220, 80),
                       (mid_x - GOAL_WIDTH / 2, COURT_Y + COURT_H), (mid_x + GOAL_WIDTH / 2, COURT_Y + COURT_H), 6)
 
+    # penalty boxes
+    box_left = mid_x - PENALTY_BOX_WIDTH / 2
+    pygame.draw.rect(
+        surface, LINE_COLOR,
+        pygame.Rect(box_left, COURT_Y, PENALTY_BOX_WIDTH, PENALTY_BOX_DEPTH), 3,
+    )
+    pygame.draw.rect(
+        surface, LINE_COLOR,
+        pygame.Rect(box_left, COURT_Y + COURT_H - PENALTY_BOX_DEPTH, PENALTY_BOX_WIDTH, PENALTY_BOX_DEPTH), 3,
+    )
+
     # goal posts - real physical obstacles (see FutsalMatch._build_walls),
     # drawn so it's clear why a wide-angle shot just clanged off one
     for post_x, post_y in match.goal_posts:
@@ -41,8 +52,20 @@ def draw_frame(surface, match: FutsalMatch, font_big, font_med):
 
     # players
     for p in match.players:
-        color = TEAM_RED if p["team"] == "red" else TEAM_BLUE
+        color = match.team_colors[p["team"]]
         x, y = p["body"].position
+
+        # facing pointer - a small triangle poking out of the circle's edge,
+        # drawn first so the circle (below) trims its base to a neat cap
+        fx, fy = p["facing"]
+        perp_x, perp_y = -fy, fx
+        tip = (x + fx * (PLAYER_RADIUS + 8), y + fy * (PLAYER_RADIUS + 8))
+        base_x, base_y = x + fx * (PLAYER_RADIUS - 8), y + fy * (PLAYER_RADIUS - 8)
+        left = (base_x + perp_x * 13, base_y + perp_y * 13)
+        right = (base_x - perp_x * 13, base_y - perp_y * 13)
+        pygame.draw.polygon(surface, color, [tip, left, right])
+        pygame.draw.polygon(surface, (0, 0, 0), [tip, left, right], 2)
+
         pygame.draw.circle(surface, color, (int(x), int(y)), PLAYER_RADIUS)
         pygame.draw.circle(surface, (0, 0, 0), (int(x), int(y)), PLAYER_RADIUS, 2)
 
@@ -53,7 +76,8 @@ def draw_frame(surface, match: FutsalMatch, font_big, font_med):
 
     # scoreboard
     score_text = font_big.render(
-        f"RED {match.score['red']}  -  {match.score['blue']} BLUE", True, LINE_COLOR
+        f"{match.team_labels['red'].upper()} {match.score['red']}  -  "
+        f"{match.score['blue']} {match.team_labels['blue'].upper()}", True, LINE_COLOR
     )
     surface.blit(score_text, score_text.get_rect(center=(VIDEO_W // 2, 140)))
 
@@ -80,7 +104,8 @@ def draw_final_score(surface, match: FutsalMatch, font_big, font_med):
 
     title_text = font_big.render("FULL TIME", True, (255, 220, 80))
     score_text = font_big.render(
-        f"RED {match.score['red']}  -  {match.score['blue']} BLUE", True, LINE_COLOR
+        f"{match.team_labels['red'].upper()} {match.score['red']}  -  "
+        f"{match.score['blue']} {match.team_labels['blue'].upper()}", True, LINE_COLOR
     )
 
     panel_w = max(title_text.get_width(), score_text.get_width()) + 100
