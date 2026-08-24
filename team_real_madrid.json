@@ -1,0 +1,53 @@
+{
+  "name": "Real Madrid",
+  "roster": [
+    {
+      "name": "Thibaut Courtois",
+      "stats": {
+        "reflex": 90
+      },
+      "face": "assets/faces/real_madrid/thibaut_courtois.png"
+    },
+    {
+      "name": "Trent Alexander-Arnold",
+      "stats": {
+        "pace": 76,
+        "shooting": 72,
+        "tackling": 80
+      },
+      "face": "assets/faces/real_madrid/trent_alexander-arnold.png"
+    },
+    {
+      "name": "Antonio Rudiger",
+      "stats": {
+        "pace": 79,
+        "shooting": 55,
+        "tackling": 84
+      },
+      "face": "assets/faces/real_madrid/antonio_rudiger.png"
+    },
+    {
+      "name": "Kylian Mbappe",
+      "stats": {
+        "pace": 97,
+        "shooting": 90,
+        "tackling": 37
+      },
+      "face": "assets/faces/real_madrid/kylian_mbappe.png"
+    },
+    {
+      "name": "Jude Bellingham",
+      "stats": {
+        "pace": 80,
+        "shooting": 86,
+        "tackling": 78
+      },
+      "face": "assets/faces/real_madrid/jude_bellingham.png"
+    }
+  ],
+  "color": [
+    91,
+    42,
+    130
+  ]
+}

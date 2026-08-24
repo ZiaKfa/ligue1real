@@ -1,0 +1,53 @@
+{
+  "name": "Manchester United",
+  "roster": [
+    {
+      "name": "Senne Lammens",
+      "stats": {
+        "reflex": 77
+      },
+      "face": "assets/faces/manchester_united/senne_lammens.png"
+    },
+    {
+      "name": "Matthijs Ligt",
+      "stats": {
+        "pace": 62,
+        "shooting": 61,
+        "tackling": 82
+      },
+      "face": "assets/faces/manchester_united/matthijs_ligt.png"
+    },
+    {
+      "name": "Lisandro Martinez",
+      "stats": {
+        "pace": 67,
+        "shooting": 59,
+        "tackling": 81
+      },
+      "face": "assets/faces/manchester_united/lisandro_martinez.png"
+    },
+    {
+      "name": "Bruno Fernandes",
+      "stats": {
+        "pace": 67,
+        "shooting": 83,
+        "tackling": 65
+      },
+      "face": "assets/faces/manchester_united/bruno_fernandes.png"
+    },
+    {
+      "name": "Bryan Mbeumo",
+      "stats": {
+        "pace": 88,
+        "shooting": 84,
+        "tackling": 49
+      },
+      "face": "assets/faces/manchester_united/bryan_mbeumo.png"
+    }
+  ],
+  "color": [
+    218,
+    41,
+    28
+  ]
+}

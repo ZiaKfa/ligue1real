@@ -1,0 +1,53 @@
+{
+  "name": "Arsenal",
+  "roster": [
+    {
+      "name": "David Raya",
+      "stats": {
+        "reflex": 87
+      },
+      "face": "assets/faces/arsenal/david_raya.png"
+    },
+    {
+      "name": "Gabriel",
+      "stats": {
+        "pace": 64,
+        "shooting": 44,
+        "tackling": 88
+      },
+      "face": "assets/faces/arsenal/gabriel.png"
+    },
+    {
+      "name": "Declan Rice",
+      "stats": {
+        "pace": 72,
+        "shooting": 73,
+        "tackling": 83
+      },
+      "face": "assets/faces/arsenal/declan_rice.png"
+    },
+    {
+      "name": "Bukayo Saka",
+      "stats": {
+        "pace": 84,
+        "shooting": 82,
+        "tackling": 60
+      },
+      "face": "assets/faces/arsenal/bukayo_saka.png"
+    },
+    {
+      "name": "Martin Odegaard",
+      "stats": {
+        "pace": 68,
+        "shooting": 79,
+        "tackling": 67
+      },
+      "face": "assets/faces/arsenal/martin_odegaard.png"
+    }
+  ],
+  "color": [
+    239,
+    1,
+    7
+  ]
+}

@@ -12,6 +12,7 @@ import math
 from .config import (
     COURT_X, COURT_Y, COURT_W, COURT_H, PLAYER_RADIUS, BACK_LINE, FWD_LINE,
     FWD_WING_OFFSET, FWD_STRIKER_OFFSET, PENALTY_BOX_WIDTH, PENALTY_BOX_DEPTH,
+    FWD_RUN_AHEAD_DISTANCE, stat_scale,
 )
 
 
@@ -27,8 +28,8 @@ def scripted_policy(match, player):
     px, py = body.position
     team = player["team"]
 
-    # red spawned side=-1 (upper half) attacks the bottom goal (+1 direction)
-    attack_dir = 1 if team == "red" else -1
+    # side=-1 (upper half) attacks the bottom goal (+1 direction), mirrored for side=1
+    attack_dir = -player["home_side"]
 
     if match.celebration_team is not None:
         if player not in match.celebration_players:
@@ -62,7 +63,7 @@ def scripted_policy(match, player):
 
         dx, dy = target_x - px, target_y - py
         dist = math.hypot(dx, dy) or 1
-        speed = 100
+        speed = 100 * stat_scale(player["stats"]["pace"])
         return (dx / dist * speed, dy / dist * speed)
 
     role = player["role"]
@@ -148,7 +149,7 @@ def scripted_policy(match, player):
         if role == "FWD":
             # push forward, ahead of the ball carrier
             target_x = home_x
-            target_y = match.possessor["body"].position[1] + attack_dir * 220
+            target_y = match.possessor["body"].position[1] + attack_dir * FWD_RUN_AHEAD_DISTANCE
         else:
             # backs hold their line - an outlet option and cover against a turnover
             target_x = home_x
@@ -192,5 +193,5 @@ def scripted_policy(match, player):
             dy += (py - my) / mdist * overlap * 2.0
 
     dist = math.hypot(dx, dy) or 1
-    speed = 260
+    speed = 260 * stat_scale(player["stats"]["pace"])
     return (dx / dist * speed, dy / dist * speed)

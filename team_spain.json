@@ -1,0 +1,53 @@
+{
+  "name": "Spain",
+  "color": [
+    196,
+    30,
+    58
+  ],
+  "roster": [
+    {
+      "name": "Unai Simon",
+      "stats": {
+        "reflex": 85
+      },
+      "face": "assets/faces/spain/unai_simon.png"
+    },
+    {
+      "name": "Aymeric Laporte",
+      "stats": {
+        "pace": 51,
+        "shooting": 50,
+        "tackling": 83
+      },
+      "face": "assets/faces/spain/aymeric_laporte.png"
+    },
+    {
+      "name": "Rodri",
+      "stats": {
+        "pace": 65,
+        "shooting": 80,
+        "tackling": 86
+      },
+      "face": "assets/faces/spain/rodri.png"
+    },
+    {
+      "name": "Nico Williams",
+      "stats": {
+        "pace": 93,
+        "shooting": 76,
+        "tackling": 36
+      },
+      "face": "assets/faces/spain/nico_williams.png"
+    },
+    {
+      "name": "Lamine Yamal",
+      "stats": {
+        "pace": 85,
+        "shooting": 81,
+        "tackling": 23
+      },
+      "face": "assets/faces/spain/lamine_yamal.png"
+    }
+  ]
+}

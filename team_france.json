@@ -1,0 +1,53 @@
+{
+  "name": "France",
+  "color": [
+    0,
+    85,
+    164
+  ],
+  "roster": [
+    {
+      "name": "Mike Maignan",
+      "stats": {
+        "reflex": 88
+      },
+      "face": "assets/faces/france/mike_maignan.png"
+    },
+    {
+      "name": "Dayot Upamecano",
+      "stats": {
+        "pace": 77,
+        "shooting": 45,
+        "tackling": 84
+      },
+      "face": "assets/faces/france/dayot_upamecano.png"
+    },
+    {
+      "name": "William Saliba",
+      "stats": {
+        "pace": 77,
+        "shooting": 39,
+        "tackling": 87
+      },
+      "face": "assets/faces/france/william_saliba.png"
+    },
+    {
+      "name": "Ousmane Dembele",
+      "stats": {
+        "pace": 91,
+        "shooting": 88,
+        "tackling": 50
+      },
+      "face": "assets/faces/france/ousmane_dembele.png"
+    },
+    {
+      "name": "Kylian Mbappe",
+      "stats": {
+        "pace": 97,
+        "shooting": 90,
+        "tackling": 37
+      },
+      "face": "assets/faces/france/kylian_mbappe.png"
+    }
+  ]
+}

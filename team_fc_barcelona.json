@@ -1,0 +1,53 @@
+{
+  "name": "FC Barcelona",
+  "roster": [
+    {
+      "name": "Marc-Andre Stegen",
+      "stats": {
+        "reflex": 85
+      },
+      "face": "assets/faces/fc_barcelona/marc-andre_stegen.png"
+    },
+    {
+      "name": "Jules Kounde",
+      "stats": {
+        "pace": 84,
+        "shooting": 47,
+        "tackling": 86
+      },
+      "face": "assets/faces/fc_barcelona/jules_kounde.png"
+    },
+    {
+      "name": "Balde",
+      "stats": {
+        "pace": 91,
+        "shooting": 50,
+        "tackling": 78
+      },
+      "face": "assets/faces/fc_barcelona/balde.png"
+    },
+    {
+      "name": "Raphinha",
+      "stats": {
+        "pace": 91,
+        "shooting": 84,
+        "tackling": 53
+      },
+      "face": "assets/faces/fc_barcelona/raphinha.png"
+    },
+    {
+      "name": "Pedri",
+      "stats": {
+        "pace": 77,
+        "shooting": 73,
+        "tackling": 78
+      },
+      "face": "assets/faces/fc_barcelona/pedri.png"
+    }
+  ],
+  "color": [
+    145,
+    26,
+    52
+  ]
+}

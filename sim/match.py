@@ -8,17 +8,32 @@ import pymunk
 from .config import (
     COURT_X, COURT_Y, COURT_W, COURT_H, PLAYER_RADIUS, PLAYER_COLLISION_RADIUS,
     BALL_RADIUS, GOAL_WIDTH, GOAL_POST_RADIUS, CONTROL_RADIUS, DRIBBLE_LEAD, BALL_FOLLOW_EASE, TACKLE_RADIUS,
-    TACKLE_COOLDOWN, PASS_INTERVAL, SHOT_DIST_MIN, SHOT_DIST_MAX, SHOT_ANGLE_SPREAD,
+    TACKLE_COOLDOWN, PASS_INTERVAL, PASS_POWER, SHOT_DIST_MIN, SHOT_DIST_MAX, SHOT_ANGLE_SPREAD,
     SHOT_POWER_MIN, SHOT_POWER_MAX, CONTROL_CHANCE, DEFLECT_SPEED, STUN_CHANCE,
     STUN_DURATION, STUN_KNOCKBACK, KEEPER_SLIP_CHANCE, KEEPER_SLIP_DURATION,
     BACK_LINE, FWD_LINE, BACK_SPACING, FWD_SPACING, FWD_WING_OFFSET, FWD_STRIKER_OFFSET,
     CELEBRATION_DURATION, FACING_MIN_SPEED, FACING_TURN_RATE, random_team_colors,
+    DEFAULT_STATS, stat_scale,
 )
 from .scripted_ai import scripted_policy
 
 
+def _normalize_team(team, default_name):
+    """teams= elements can be None (default), a plain name string, or a
+    dict {"name":..., "color":..., "roster":...} - normalize all three to one shape."""
+    if team is None:
+        return {"name": default_name, "color": None, "roster": None}
+    if isinstance(team, str):
+        return {"name": team, "color": None, "roster": None}
+    return {
+        "name": team.get("name") or default_name,
+        "color": team.get("color"),
+        "roster": team.get("roster"),
+    }
+
+
 class FutsalMatch:
-    def __init__(self, players_per_team=5, seed=None, policy_fn=None):
+    def __init__(self, players_per_team=5, seed=None, policy_fn=None, teams=(None, None)):
         if seed is not None:
             random.seed(seed)
 
@@ -31,14 +46,39 @@ class FutsalMatch:
         self.space = pymunk.Space()
         self.space.damping = 0.55  # friction-like slowdown each step
 
-        self.score = {"red": 0, "blue": 0}
-        self.team_colors, self.team_labels = random_team_colors()
-        self.event_log = []  # (time, text) for on-screen captions
+        cfg_a = _normalize_team(teams[0], "red")
+        cfg_b = _normalize_team(teams[1], "blue")
+        name_a, name_b = cfg_a["name"], cfg_b["name"]
+        # side = -1 -> defends top goal, attacks bottom; side = 1 -> mirrored
+        self.team_names = (name_a, name_b)
+        self.team_by_side = {-1: name_a, 1: name_b}
+        self.home_side_by_team = {name_a: -1, name_b: 1}
+
+        self.score = {name_a: 0, name_b: 0}
+        self.team_colors, self.team_labels = random_team_colors(name_a, name_b)
+        # a custom name replaces the auto-generated color-name label outright -
+        # everything downstream (scoreboard, commentary) just reads team_labels,
+        # so this is the only place that needs to know "was this customized?"
+        if cfg_a["color"]:
+            self.team_colors[name_a] = cfg_a["color"]
+        if teams[0] is not None:
+            self.team_labels[name_a] = name_a
+        if cfg_b["color"]:
+            self.team_colors[name_b] = cfg_b["color"]
+        if teams[1] is not None:
+            self.team_labels[name_b] = name_b
+
+        self.event_log = []  # (time, text, team) for on-screen captions; team picks the caption's color
         self.time_elapsed = 0.0    # simulation clock - always runs, drives cooldowns
         self.match_clock = 0.0     # displayed match timer - pauses during celebrations
 
         self.possessor = None          # player dict currently carrying the ball, or None
         self.received_from_keeper = None   # player who must not immediately pass straight back to the keeper
+        self.last_toucher = None       # player dict who last gained controlled possession - credited with a goal
+                                        # if their team scores before anyone else takes control (covers shots,
+                                        # dribble-ins, and loose passes that roll straight in untouched)
+        self.pending_assist = None     # player dict who made the pass that put last_toucher through
+        self.pending_assist_target = None  # who that pass was intended for - assist stays valid only if they're the one who ends up as last_toucher
         self.next_tackle_time = 0.0    # cooldown so a tackle isn't rolled every physics substep
         self.next_release_time = 0.0   # when the current carrier must pass/shoot
         self.pickup_exempt = []        # players who can't re-collect the just-released ball
@@ -52,8 +92,8 @@ class FutsalMatch:
         self.ball_body, self.ball_shape = self._make_ball()
         self.players = []  # list of dicts: body, shape, team, role
 
-        self._spawn_team("red", players_per_team, side=-1)
-        self._spawn_team("blue", players_per_team, side=1)
+        self._spawn_team(name_a, players_per_team, side=-1, roster=cfg_a["roster"])
+        self._spawn_team(name_b, players_per_team, side=1, roster=cfg_b["roster"])
 
     # -- setup -----------------------------------------------------
     def _build_walls(self):
@@ -110,7 +150,7 @@ class FutsalMatch:
         self.space.add(body, shape)
         return body, shape
 
-    def _spawn_team(self, team, count, side):
+    def _spawn_team(self, team, count, side, roster=None):
         # side = -1 -> defends top goal, attacks bottom; side = 1 -> mirrored
         # player 0 is the goalkeeper; the rest split evenly into backs (sit
         # deep, mark the ball) and forwards (push further upfield)
@@ -151,7 +191,16 @@ class FutsalMatch:
             shape.friction = 0.6
             shape.collision_type = 2
             self.space.add(body, shape)
-            attack_dir = 1 if team == "red" else -1
+            attack_dir = -side
+
+            # roster entries are matched positionally (index 0 = GK, then
+            # spawn order) - missing/short roster or missing stat keys all
+            # fall back to DEFAULT_STATS, so a partial roster never crashes
+            entry = roster[i] if roster and i < len(roster) else None
+            stats = {**DEFAULT_STATS, **(entry.get("stats", {}) if entry else {})}
+            name = entry.get("name") if entry else None
+            face = entry.get("face") if entry else None
+
             self.players.append({
                 "body": body, "shape": shape, "team": team,
                 "home_side": side, "id": f"{team}_{i}", "number": i + 1,
@@ -160,11 +209,40 @@ class FutsalMatch:
                 "spawn_pos": (x, y),
                 "stunned_until": 0.0,
                 "facing": (0.0, attack_dir),  # unit vector; starts facing the attacking goal
+                "stats": stats,
+                "name": name,
+                "face": face,
+                "goals": 0,
+                "assists": 0,
             })
 
     def _name(self, p):
-        """Human-readable player label for commentary, e.g. "Magenta Player 1"."""
-        return f"{self.team_labels[p['team']]} Player {p['number']}"
+        """Human-readable player label for commentary, e.g. "Magenta Player 1" or a custom roster name."""
+        return p["name"] or f"{self.team_labels[p['team']]} Player {p['number']}"
+
+    def start_second_half(self):
+        """Teams swap ends, like real football - flips each player's
+        home_side and mirrors their kickoff position/facing across the
+        halfway line. Ball resets to center; who gets it is decided the
+        same way the match's very first kickoff is (closest player wins
+        the loose ball), so no explicit kickoff-team bookkeeping is needed."""
+        mid_y = COURT_Y + COURT_H / 2
+        self.team_by_side = {-1: self.team_by_side[1], 1: self.team_by_side[-1]}
+        self.home_side_by_team = {team: -side for team, side in self.home_side_by_team.items()}
+
+        for p in self.players:
+            p["home_side"] *= -1
+            x, y = p["spawn_pos"]
+            p["spawn_pos"] = (x, 2 * mid_y - y)
+            p["body"].position = p["spawn_pos"]
+            p["body"].velocity = (0, 0)
+            p["facing"] = (0.0, -p["home_side"])
+
+        self.ball_body.position = (COURT_X + COURT_W / 2, mid_y)
+        self.ball_body.velocity = (0, 0)
+        self.possessor = None
+        self.pickup_exempt = []
+        self.pickup_cooldown_until = 0.0
 
     # -- step --------------------------------------------------------
     def step(self, dt):
@@ -205,12 +283,21 @@ class FutsalMatch:
         self.time_elapsed += dt
         if self.celebration_team is None:
             self.match_clock += dt
-        self._update_possession()
+        # goal detection must run before possession pickup - otherwise a
+        # keeper standing right on the line can "catch" a ball whose
+        # position has already crossed it in this same frame, which wipes
+        # last_toucher/pending_assist before _check_goal gets to credit them
         self._check_goal()
+        self._update_possession()
         self._update_celebration()
 
     # -- ball possession: pickup, dribble, tackle, pass/shoot --------
     def _update_possession(self):
+        if self.celebration_team is not None:
+            # ball's parked at center for the celebration - nothing to pick
+            # up until _update_celebration hands it to the kicker for kickoff
+            return
+
         bx, by = self.ball_body.position
 
         if self.possessor is None:
@@ -228,6 +315,16 @@ class FutsalMatch:
                     closest, closest_dist = p, dist
             if closest is not None:
                 if random.random() < CONTROL_CHANCE:
+                    # whoever just gained real control is now the one on the
+                    # hook for the next goal - a shot that merely grazes past
+                    # a keeper/defender without them taking it (see the
+                    # fumble branch below) doesn't break the chain, only an
+                    # actual change of possession does
+                    if closest is not self.pending_assist_target:
+                        self.pending_assist = None
+                        self.pending_assist_target = None
+                    self.last_toucher = closest
+
                     self.possessor = closest
                     self.next_release_time = self.time_elapsed + PASS_INTERVAL
                 else:
@@ -241,7 +338,7 @@ class FutsalMatch:
 
         p = self.possessor
         px, py = p["body"].position
-        attack_dir = 1 if p["team"] == "red" else -1
+        attack_dir = -p["home_side"]
 
         # glue the ball to its carrier, slightly ahead of wherever they're
         # actually facing (last moving direction) - not always straight
@@ -268,7 +365,8 @@ class FutsalMatch:
         self.ball_body.position = (bx_new, by_new)
         self.ball_body.velocity = p["body"].velocity
 
-        # a defender close enough gets a 50/50 shot at winning the ball
+        # a defender close enough gets a shot at winning the ball - 50/50 at
+        # equal tackling stat, shifted by the gap between the two players'
         if self.time_elapsed >= self.next_tackle_time:
             for opp in self.players:
                 if opp["team"] == p["team"]:
@@ -276,10 +374,12 @@ class FutsalMatch:
                 ox, oy = opp["body"].position
                 if math.hypot(px - ox, py - oy) < TACKLE_RADIUS:
                     self.next_tackle_time = self.time_elapsed + TACKLE_COOLDOWN
-                    if random.random() < 0.5:
+                    tackle_chance = 0.5 + (opp["stats"]["tackling"] - p["stats"]["tackling"]) / 200
+                    tackle_chance = max(0.2, min(0.8, tackle_chance))
+                    if random.random() < tackle_chance:
                         # the ball is knocked loose, not cleanly won - it
                         # squirts away for a genuine 50/50 second ball
-                        self.event_log.append((self.time_elapsed, f"TACKLE! {self._name(opp)} knocks it loose"))
+                        self.event_log.append((self.time_elapsed, f"TACKLE! {self._name(opp)} knocks it loose", opp["team"]))
                         angle = random.uniform(0, 2 * math.pi)
                         self.ball_body.velocity = (math.cos(angle) * DEFLECT_SPEED, math.sin(angle) * DEFLECT_SPEED)
                         self.possessor = None
@@ -310,24 +410,29 @@ class FutsalMatch:
 
     def _release_ball(self, p, shoot):
         team = p["team"]
-        attack_dir = 1 if team == "red" else -1
+        attack_dir = -p["home_side"]
         bx, by = self.ball_body.position
 
         if shoot:
-            # aim at the goal but with a random angle error - can miss wide
+            # aim at the goal but with a random angle error - can miss wide.
+            # a better shooter hits harder and straighter; a lower shooting
+            # stat does the opposite - both scale from the same neutral point
+            shooting = p["stats"]["shooting"]
             goal_x = COURT_X + COURT_W / 2
             goal_y = self.court_bounds[3] if attack_dir == 1 else self.court_bounds[1]
             angle = math.atan2(goal_y - by, goal_x - bx)
-            angle += random.uniform(-SHOT_ANGLE_SPREAD, SHOT_ANGLE_SPREAD)
+            angle += random.uniform(-SHOT_ANGLE_SPREAD, SHOT_ANGLE_SPREAD) * stat_scale(shooting, invert=True)
             target_x = bx + math.cos(angle) * 1000
             target_y = by + math.sin(angle) * 1000
-            power = random.uniform(SHOT_POWER_MIN, SHOT_POWER_MAX)
-            self.event_log.append((self.time_elapsed, f"{self._name(p)} shoots!"))
+            power = random.uniform(SHOT_POWER_MIN, SHOT_POWER_MAX) * stat_scale(shooting)
+            self.event_log.append((self.time_elapsed, f"{self._name(p)} shoots!", team))
 
             keeper = next((q for q in self.players if q["team"] != team and q["role"] == "GK"), None)
-            if keeper is not None and random.random() < KEEPER_SLIP_CHANCE:
-                keeper["stunned_until"] = self.time_elapsed + KEEPER_SLIP_DURATION
-                self.event_log.append((self.time_elapsed, f"{self._name(keeper)} slips!"))
+            if keeper is not None:
+                slip_chance = KEEPER_SLIP_CHANCE * stat_scale(keeper["stats"]["reflex"], invert=True)
+                if random.random() < slip_chance:
+                    keeper["stunned_until"] = self.time_elapsed + KEEPER_SLIP_DURATION
+                    self.event_log.append((self.time_elapsed, f"{self._name(keeper)} slips!", keeper["team"]))
             self.received_from_keeper = None
         else:
             teammates = [q for q in self.players if q["team"] == team and q is not p]
@@ -340,9 +445,11 @@ class FutsalMatch:
                 teammates = [q for q in teammates if q["role"] != "GK"]
             target = max(teammates, key=lambda q: attack_dir * q["body"].position[1])
             target_x, target_y = target["body"].position
-            power = 380
-            self.event_log.append((self.time_elapsed, f"{self._name(p)} passes"))
+            power = PASS_POWER
+            self.event_log.append((self.time_elapsed, f"{self._name(p)} passes", team))
             self.received_from_keeper = target if p["role"] == "GK" else None
+            self.pending_assist = p
+            self.pending_assist_target = target
 
         kx, ky = target_x - bx, target_y - by
         kd = math.hypot(kx, ky) or 1
@@ -368,7 +475,7 @@ class FutsalMatch:
         dx, dy = ax - fx, ay - fy
         d = math.hypot(dx, dy) or 1
         player["body"].velocity = (dx / d * STUN_KNOCKBACK, dy / d * STUN_KNOCKBACK)
-        self.event_log.append((self.time_elapsed, f"{self._name(player)} is stunned!"))
+        self.event_log.append((self.time_elapsed, f"{self._name(player)} is stunned!", player["team"]))
 
         if self.possessor is player:
             # can't stay in control while reeling from the hit - ball spills loose
@@ -384,17 +491,34 @@ class FutsalMatch:
         lo, hi = self.goal_top_x_range
         scored = None
         if by <= top + BALL_RADIUS and lo <= bx <= hi:
-            scored = "blue"   # ball entered top goal -> blue scored (red defends top)
+            scored = self.team_by_side[1]    # ball entered top goal -> the team attacking top scored
         elif by >= bottom - BALL_RADIUS and lo <= bx <= hi:
-            scored = "red"    # ball entered bottom goal -> red scored
+            scored = self.team_by_side[-1]   # ball entered bottom goal -> the team attacking bottom scored
 
         if scored:
             self.score[scored] += 1
-            self.event_log.append((self.time_elapsed, f"GOAL! {self.team_labels[scored].upper()} scores!"))
+
+            # credit whoever last had the ball, but only if it's actually the
+            # scoring team - an own goal or a stray deflection with no valid
+            # chain simply isn't attributed to anyone
+            scorer = self.last_toucher if (self.last_toucher is not None
+                                            and self.last_toucher["team"] == scored) else None
+            text = (f"GOAL! {self._name(scorer)} scores!" if scorer is not None
+                    else f"GOAL! {self.team_labels[scored].upper()} scores!")
+            self.event_log.append((self.time_elapsed, text, scored))
+
+            if scorer is not None:
+                scorer["goals"] += 1
+                if (self.pending_assist is not None and self.pending_assist["team"] == scored
+                        and self.pending_assist is not scorer):
+                    self.pending_assist["assists"] += 1
+            self.last_toucher = None
+            self.pending_assist = None
+            self.pending_assist_target = None
 
             # backs only join the celebration if they were already forward,
             # in the opponent's half, when the goal went in - forwards always join
-            attack_dir = 1 if scored == "red" else -1
+            attack_dir = -self.home_side_by_team[scored]
             mid_y = COURT_Y + COURT_H / 2
             self.celebration_players = []
             for p in self.players:
@@ -422,7 +546,8 @@ class FutsalMatch:
 
     def _update_celebration(self):
         if self.celebration_team is not None and self.time_elapsed >= self.celebration_until:
-            conceding_team = "blue" if self.celebration_team == "red" else "red"
+            name_a, name_b = self.team_names
+            conceding_team = name_b if self.celebration_team == name_a else name_a
             self.celebration_team = None
             self.celebration_players = []
             for p in self.players:

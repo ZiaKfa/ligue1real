@@ -1,0 +1,53 @@
+{
+  "name": "Argentina",
+  "roster": [
+    {
+      "name": "Damian Martinez",
+      "stats": {
+        "reflex": 10
+      },
+      "face": "assets/faces/argentina/damian_martinez.png"
+    },
+    {
+      "name": "Nicolas Otamendi",
+      "face": "assets/faces/argentina/nicolas_otamendi.png",
+      "stats": {
+        "pace": 45,
+        "shooting": 18,
+        "tackling": 19
+      }
+    },
+    {
+      "name": "Cristian Romero",
+      "stats": {
+        "pace": 72,
+        "shooting": 63,
+        "tackling": 60
+      },
+      "face": "assets/faces/argentina/cristian_romero.png"
+    },
+    {
+      "name": "Lautaro Martinez",
+      "stats": {
+        "pace": 61,
+        "shooting": 66,
+        "tackling": 20
+      },
+      "face": "assets/faces/argentina/lautaro_martinez.png"
+    },
+    {
+      "name": "Lionel Messi",
+      "face": "assets/faces/argentina/lionel_messi.png",
+      "stats": {
+        "pace": 78,
+        "shooting": 85,
+        "tackling": 33
+      }
+    }
+  ],
+  "color": [
+    104,
+    195,
+    235
+  ]
+}

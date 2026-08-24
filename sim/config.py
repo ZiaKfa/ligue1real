@@ -9,10 +9,13 @@ import random
 # ---------------------------------------------------------------
 VIDEO_W, VIDEO_H = 1080, 1920      # vertical output (TikTok/Reels)
 FPS = 30
-MATCH_SECONDS = 45                 # sim length; trim/loop as you like
+MATCH_SECONDS = 45                 # length of ONE half; the sim plays two of these (2x45) with a halftime break
 STEPS_PER_FRAME = 4                # physics substeps for stability
 FINAL_SCORE_HOLD_SECONDS = 3       # how long the full-time score screen stays up before closing
-MIN_GOALS_PER_SIDE = 1              # each team must reach this many goals, or the recording is discarded
+HALF_TIME_HOLD_SECONDS = 2         # how long the half-time screen stays up before the second half kicks off
+MIN_GOALS_DEFAULT = 0       # default for --min-goals, applies to both sides unless overridden below
+MIN_GOALS_RED_DEFAULT = 0   # default for --min-goals-red specifically - independent of MIN_GOALS_DEFAULT
+MIN_GOALS_BLUE_DEFAULT = 0  # default for --min-goals-blue specifically - independent of MIN_GOALS_DEFAULT
 
 # ---------------------------------------------------------------
 # COURT
@@ -24,7 +27,7 @@ COURT_H = VIDEO_H - COURT_MARGIN_TOP - COURT_MARGIN_BOTTOM
 COURT_X = (VIDEO_W - COURT_W) // 2
 COURT_Y = COURT_MARGIN_TOP
 
-PLAYER_RADIUS = 26
+PLAYER_RADIUS = 40
 PLAYER_COLLISION_RADIUS = PLAYER_RADIUS * 0.7      # smaller physics shape than the drawn circle,
                                                     # so two players can overlap ~0.3 of a diameter
 BALL_RADIUS = 16
@@ -46,6 +49,8 @@ FACING_TURN_RATE = 0.15                             # 0-1: how fast facing pivot
 TACKLE_RADIUS = PLAYER_RADIUS * 2 + 6               # how close a defender must get to contest
 TACKLE_COOLDOWN = 0.8                               # seconds before the same carrier can be tackled again
 PASS_INTERVAL = 0.7                                 # max seconds a player holds the ball before releasing it
+PASS_POWER = 380                                    # speed a regular (non-shot) pass travels at
+FWD_RUN_AHEAD_DISTANCE = 220                         # how far ahead of the ball carrier a supporting FWD pushes
 SHOT_DIST_MIN = 90                                  # closest a shot attempt range can roll to
 SHOT_DIST_MAX = 260                                 # farthest a shot attempt range can roll to (tune to taste)
 SHOT_ANGLE_SPREAD = math.radians(40)                # max random aim error either side of dead-center (radians)
@@ -74,7 +79,19 @@ FWD_WING_OFFSET = 300
 FWD_STRIKER_OFFSET = 0
 FWD_SPACING = 600                                   # fallback spacing if players_per_team ever gives >2 forwards
 
-CELEBRATION_DURATION = 2.0                          # seconds the scoring team celebrates before kickoff resets
+CELEBRATION_DURATION = 1.5                          # seconds the scoring team celebrates before kickoff resets
+
+# ---------------------------------------------------------------
+# PLAYER STATS
+# ---------------------------------------------------------------
+DEFAULT_STATS = {"pace": 50, "shooting": 50, "tackling": 50, "reflex": 50}  # 0-100, 50 = today's flat behavior
+
+
+def stat_scale(value, invert=False):
+    """Linear factor centered on stat=50 -> 1.0 (neutral, no-op). 0-100 -> 0.7-1.3x
+    (or inverted: 100 -> 0.7x, 0 -> 1.3x, for stats where higher should shrink the effect)."""
+    factor = 0.6 * value / 100
+    return 1.3 - factor if invert else 0.7 + factor
 
 # ---------------------------------------------------------------
 # COLORS
@@ -96,10 +113,11 @@ def _hue_distance(a, b):
     return min(d, 1.0 - d)
 
 
-def random_team_colors():
+def random_team_colors(team_a_key, team_b_key):
     """Two random, visually distinct kit colors + display names, keyed by
-    the internal "red"/"blue" team ids (those ids are just opaque keys -
-    not tied to the actual displayed color/name). Returns (colors, labels)."""
+    whatever team ids the caller is actually using (default "red"/"blue",
+    or a custom team name - these ids are just opaque keys, not tied to
+    the actual displayed color/name). Returns (colors, labels)."""
     name_a, hue_a = random.choice(_NAMED_HUES)
     candidates = [(n, h) for n, h in _NAMED_HUES if _hue_distance(h, hue_a) >= 0.25]
     name_b, hue_b = random.choice(candidates)
@@ -107,10 +125,10 @@ def random_team_colors():
     r1, g1, b1 = colorsys.hsv_to_rgb(hue_a, 0.75, 0.85)
     r2, g2, b2 = colorsys.hsv_to_rgb(hue_b, 0.75, 0.85)
     colors = {
-        "red": (int(r1 * 255), int(g1 * 255), int(b1 * 255)),
-        "blue": (int(r2 * 255), int(g2 * 255), int(b2 * 255)),
+        team_a_key: (int(r1 * 255), int(g1 * 255), int(b1 * 255)),
+        team_b_key: (int(r2 * 255), int(g2 * 255), int(b2 * 255)),
     }
-    labels = {"red": name_a, "blue": name_b}
+    labels = {team_a_key: name_a, team_b_key: name_b}
     return colors, labels
 
 

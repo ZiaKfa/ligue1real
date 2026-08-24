@@ -1,0 +1,53 @@
+{
+  "name": "Manchester City",
+  "roster": [
+    {
+      "name": "Gianluigi Donnarumma",
+      "stats": {
+        "reflex": 90
+      },
+      "face": "assets/faces/manchester_city/gianluigi_donnarumma.png"
+    },
+    {
+      "name": "Rodri",
+      "stats": {
+        "pace": 65,
+        "shooting": 80,
+        "tackling": 86
+      },
+      "face": "assets/faces/manchester_city/rodri.png"
+    },
+    {
+      "name": "Ruben Dias",
+      "stats": {
+        "pace": 59,
+        "shooting": 39,
+        "tackling": 86
+      },
+      "face": "assets/faces/manchester_city/ruben_dias.png"
+    },
+    {
+      "name": "Erling Haaland",
+      "stats": {
+        "pace": 86,
+        "shooting": 91,
+        "tackling": 45
+      },
+      "face": "assets/faces/manchester_city/erling_haaland.png"
+    },
+    {
+      "name": "Tijjani Reijnders",
+      "stats": {
+        "pace": 79,
+        "shooting": 79,
+        "tackling": 77
+      },
+      "face": "assets/faces/manchester_city/tijjani_reijnders.png"
+    }
+  ],
+  "color": [
+    108,
+    171,
+    221
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "name": "England",
+  "roster": [
+    {
+      "name": "Jordan Pickford",
+      "stats": {
+        "reflex": 87
+      },
+      "face": "assets/faces/england/jordan_pickford.png"
+    },
+    {
+      "name": "Declan Rice",
+      "stats": {
+        "pace": 72,
+        "shooting": 73,
+        "tackling": 83
+      },
+      "face": "assets/faces/england/declan_rice.png"
+    },
+    {
+      "name": "Marc Guehi",
+      "face": "assets/faces/england/marc_guehi.png",
+      "stats": {
+        "pace": 69,
+        "shooting": 39,
+        "tackling": 83
+      }
+    },
+    {
+      "name": "Jude Bellingham",
+      "stats": {
+        "pace": 80,
+        "shooting": 86,
+        "tackling": 78
+      },
+      "face": "assets/faces/england/jude_bellingham.png"
+    },
+    {
+      "name": "Harry Kane",
+      "stats": {
+        "pace": 64,
+        "shooting": 92,
+        "tackling": 48
+      },
+      "face": "assets/faces/england/harry_kane.png"
+    }
+  ],
+  "color": [
+    207,
+    20,
+    43
+  ]
+}

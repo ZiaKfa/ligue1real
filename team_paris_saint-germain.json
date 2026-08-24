@@ -1,0 +1,53 @@
+{
+  "name": "Paris Saint-Germain",
+  "roster": [
+    {
+      "name": "Lucas Chevalier",
+      "stats": {
+        "reflex": 86
+      },
+      "face": "assets/faces/paris_saint-germain/lucas_chevalier.png"
+    },
+    {
+      "name": "Achraf Hakimi",
+      "stats": {
+        "pace": 92,
+        "shooting": 79,
+        "tackling": 82
+      },
+      "face": "assets/faces/paris_saint-germain/achraf_hakimi.png"
+    },
+    {
+      "name": "Marquinhos",
+      "stats": {
+        "pace": 78,
+        "shooting": 56,
+        "tackling": 89
+      },
+      "face": "assets/faces/paris_saint-germain/marquinhos.png"
+    },
+    {
+      "name": "Masour Dembele",
+      "stats": {
+        "pace": 91,
+        "shooting": 88,
+        "tackling": 50
+      },
+      "face": "assets/faces/paris_saint-germain/masour_dembele.png"
+    },
+    {
+      "name": "Vitinha",
+      "stats": {
+        "pace": 72,
+        "shooting": 80,
+        "tackling": 75
+      },
+      "face": "assets/faces/paris_saint-germain/vitinha.png"
+    }
+  ],
+  "color": [
+    0,
+    32,
+    91
+  ]
+}

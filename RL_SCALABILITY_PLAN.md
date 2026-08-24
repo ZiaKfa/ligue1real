@@ -12,6 +12,7 @@ Dokumen ini adalah hasil review arsitektur kode saat ini terhadap kebutuhan peng
 | v1.1 | Setelah **Fase 0 dieksekusi & diverifikasi** | `main.py` sudah dipecah jadi `sim/` + `render/` + entrypoint tipis sesuai rencana Fase 0. Tabel "hambatan" di §1 dan blok Fase 0 di §3 diperbarui dengan status & lokasi kode terbaru (bukan lagi proposal, tapi hasil nyata + hasil regression test). Detail lengkap ada di §3 → "Fase 0 — Hasil Eksekusi". |
 | v1.2 | Estimasi waktu training (tebakan awal) | Tambah tabel estimasi waktu training kasar (timestep & wall-clock) di §3 Fase 3, sebagai perkiraan awal sebelum ada benchmark nyata. |
 | v1.3 (saat ini) | **Benchmark throughput nyata dijalankan** | Ukur langsung `FutsalMatch.step()` headless pakai `multiprocessing` (1/4/8/12 proses paralel) di hardware ini (12 logical CPU, Windows) — hasil: 3.934 env-frame/detik single-core, naik ke 14.829/detik di 12 proses (scaling tidak linear). Tabel estimasi waktu training di §3 Fase 3 diperbarui pakai angka nyata ini (jauh lebih cepat dari tebakan v1.2), dengan catatan jelas belum termasuk overhead PPO. |
+| v1.4 (sekarang) | **Klarifikasi kontrak RL dan batas benchmark** | Status fase diperbarui: Fase 0 selesai, Fase 1 menjadi langkah aktif. Episode baseline ditetapkan satu half, kontrak observation/action/reward diperjelas, evaluasi diperketat, dan benchmark physics tidak lagi dipakai sebagai estimasi waktu training final. |
 
 ---
 
@@ -218,4 +219,4 @@ tensorboard
 
 Mulai dari **Fase 0** (refactor pemisahan file) — risiko rendah, tidak butuh keputusan desain baru, dan jadi prasyarat keras untuk semua fase setelahnya. Fase 1 (spesifikasi) bisa ditulis paralel sambil Fase 0 jalan. Jangan mulai Fase 2 sebelum Fase 0 selesai dan tervalidasi (behavior gameplay tetap identik).
 
-**Status saat ini (v1.1)**: Fase 0 ✅ selesai & tervalidasi. Langkah berikutnya: **Fase 1** (tulis spesifikasi observation/action/reward di §3), baru lanjut Fase 2 (Gym env wrapper).
+**Status saat ini (v1.4)**: Fase 0 ✅ selesai & tervalidasi. Fase 1 adalah langkah aktif berikutnya: tetapkan kontrak observation/action/reward dan aturan episode, baru lanjut ke Fase 2 (Gym env wrapper).

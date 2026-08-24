@@ -1,0 +1,11 @@
+{
+  "name": "Elang Biru",
+  "color": [70, 120, 230],
+  "roster": [
+    {"name": "Courtois", "stats": {"reflex": 85}},
+    {"name": "Van Dijk", "stats": {"tackling": 85}},
+    {"name": "Modric", "stats": {"tackling": 70}},
+    {"name": "Haaland", "stats": {"pace": 90, "shooting": 95}},
+    {"name": "Salah", "stats": {"pace": 92, "shooting": 88}}
+  ]
+}

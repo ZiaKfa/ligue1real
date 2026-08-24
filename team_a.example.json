@@ -1,0 +1,11 @@
+{
+  "name": "FC Cepat",
+  "color": [230, 70, 70],
+  "roster": [
+    {"name": "Alonso", "stats": {"reflex": 90}},
+    {"name": "Ramos", "stats": {"tackling": 90}},
+    {"name": "Pique", "stats": {"tackling": 80}},
+    {"name": "Mbappe", "stats": {"pace": 95, "shooting": 90}},
+    {"name": "Neymar", "stats": {"pace": 90, "shooting": 85}}
+  ]
+}

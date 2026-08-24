@@ -11,8 +11,9 @@ Run:
     python main.py --no-preview
     python main.py --no-preview --batch 5             # 4 parallel workers by default
     python main.py --no-preview --batch 20 --jobs 8   # raise it on a beefier machine
-    python main.py --no-preview --batch 10 --min-goals 2
-    python main.py --no-preview --batch 10 --min-goals-red 2 --min-goals-blue 0
+    python main.py --no-preview --batch 10 --min-goals 2               # e.g. keeps a 2-0 result
+    python main.py --no-preview --batch 10 --min-goals-red 2 --min-goals-blue 0   # red must score >=2 AND blue >=0
+    python main.py --team-a-config myteam.json         # {"name": "FC Merah", "color": [230,70,70]}
 
 Output:
     output/goals<total>_<red>-<blue>_<timestamp>.mp4
@@ -26,14 +27,15 @@ import argparse
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from sim import FutsalMatch
-from sim.config import MIN_GOALS_PER_SIDE
+from sim.config import MIN_GOALS_DEFAULT, MIN_GOALS_RED_DEFAULT, MIN_GOALS_BLUE_DEFAULT
+from sim.team_config import load_team_config
 from render.preview import run_preview
 
 
-def _generate_one(_index, min_goals_red, min_goals_blue):
+def _generate_one(_index, min_goals, min_goals_red, min_goals_blue, team_a, team_b):
     """Runs in a worker process - builds and renders one match headlessly."""
-    match = FutsalMatch(players_per_team=5)
-    return run_preview(match, show_preview=False,
+    match = FutsalMatch(players_per_team=5, teams=(team_a, team_b))
+    return run_preview(match, show_preview=False, min_goals=min_goals,
                         min_goals_red=min_goals_red, min_goals_blue=min_goals_blue)
 
 
@@ -54,32 +56,45 @@ def main():
              "multi-threaded, so going much higher tends to oversubscribe the CPU)",
     )
     parser.add_argument(
-        "--min-goals", type=int, default=MIN_GOALS_PER_SIDE, metavar="N",
-        help="each team must reach this many goals or the recording is discarded "
-             f"(default: {MIN_GOALS_PER_SIDE}); overridden per-team by "
-             "--min-goals-red/--min-goals-blue below",
+        "--min-goals", type=int, default=MIN_GOALS_DEFAULT, metavar="N",
+        help="the match's total combined goals (both sides added together) must reach "
+             "this many, or the recording is discarded - so --min-goals 2 keeps a 2-0 "
+             f"result just as readily as a 1-1 (default: {MIN_GOALS_DEFAULT}); this is "
+             "independent of --min-goals-red/--min-goals-blue below, which check each "
+             "side individually on top of this",
     )
     parser.add_argument(
-        "--min-goals-red", type=int, default=None, metavar="N",
-        help="override --min-goals for the 'red' team slot specifically "
-             "(note: 'red'/'blue' are just internal team ids, not the actual "
-             "kit color - that's randomized per match)",
+        "--min-goals-red", type=int, default=MIN_GOALS_RED_DEFAULT, metavar="N",
+        help="additionally require the 'red' team slot to individually reach this many "
+             f"goals (default: {MIN_GOALS_RED_DEFAULT}; note: 'red'/'blue' are just "
+             "internal team ids, not the actual kit color - that's randomized per match)",
     )
     parser.add_argument(
-        "--min-goals-blue", type=int, default=None, metavar="N",
-        help="override --min-goals for the 'blue' team slot specifically",
+        "--min-goals-blue", type=int, default=MIN_GOALS_BLUE_DEFAULT, metavar="N",
+        help="additionally require the 'blue' team slot to individually reach this many "
+             f"goals (default: {MIN_GOALS_BLUE_DEFAULT})",
+    )
+    parser.add_argument(
+        "--team-a-config", type=str, default=None, metavar="PATH",
+        help='JSON file with {"name": ..., "color": [r,g,b]} for the "red" team slot '
+             "(both fields optional; omit this flag to keep the default random identity)",
+    )
+    parser.add_argument(
+        "--team-b-config", type=str, default=None, metavar="PATH",
+        help="same as --team-a-config, for the 'blue' team slot",
     )
     args = parser.parse_args()
 
-    min_goals_red = args.min_goals_red if args.min_goals_red is not None else args.min_goals
-    min_goals_blue = args.min_goals_blue if args.min_goals_blue is not None else args.min_goals
+    team_a = load_team_config(args.team_a_config) if args.team_a_config else None
+    team_b = load_team_config(args.team_b_config) if args.team_b_config else None
 
     if args.no_preview and args.batch > 1:
         # each match is independent and CPU-bound (physics + ffmpeg encode),
         # so parallelizing across processes is a straight wall-clock win
         with ProcessPoolExecutor(max_workers=args.jobs) as pool:
             futures = [
-                pool.submit(_generate_one, i, min_goals_red, min_goals_blue)
+                pool.submit(_generate_one, i, args.min_goals, args.min_goals_red,
+                            args.min_goals_blue, team_a, team_b)
                 for i in range(args.batch)
             ]
             for future in as_completed(futures):
@@ -89,9 +104,9 @@ def main():
     for i in range(args.batch):
         if args.batch > 1:
             print(f"\n=== Match {i + 1}/{args.batch} ===")
-        match = FutsalMatch(players_per_team=5)
-        run_preview(match, show_preview=not args.no_preview,
-                    min_goals_red=min_goals_red, min_goals_blue=min_goals_blue)
+        match = FutsalMatch(players_per_team=5, teams=(team_a, team_b))
+        run_preview(match, show_preview=not args.no_preview, min_goals=args.min_goals,
+                    min_goals_red=args.min_goals_red, min_goals_blue=args.min_goals_blue)
 
 
 if __name__ == "__main__":
